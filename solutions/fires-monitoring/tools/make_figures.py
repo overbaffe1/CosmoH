@@ -23,6 +23,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
+import evaluate as evaluate_module  # noqa: E402
 from fires import af as af_module  # noqa: E402
 from fires import bs as bs_module  # noqa: E402
 from fires.blobfilter import BlobFilter  # noqa: E402
@@ -85,13 +86,13 @@ def figure_detection(dataset: Dataset, af_params, blob_filter, out: Path) -> tup
     return path, score["f1_af"]
 
 
-def figure_severity(dataset: Dataset, bs_params, out: Path) -> tuple[Path, dict]:
+def figure_severity(dataset: Dataset, bs_params, out: Path, severity_model=None) -> tuple[Path, dict]:
     """Пример картирования гари: dNBR, эталонная степень поражения и ответ алгоритма."""
 
     ids = [cid for cid in dataset.chip_ids("bs") if dataset.load(cid).mask_sev is not None]
     chip_id = max(ids, key=lambda cid: int((dataset.load(cid).mask_sev > 0).sum()))
     chip = dataset.load(chip_id)
-    pred = bs_module.classify_chip(chip, bs_params)
+    pred = bs_module.classify_chip(chip, bs_params, severity_model=severity_model)
     truth = chip.mask_sev
 
     nbr_pre = bs_module.nbr(bs_module.scale_reflectance(chip.pre["B8A"]), bs_module.scale_reflectance(chip.pre["B12"]))
@@ -184,23 +185,23 @@ def figure_ablations(rows: list[tuple[str, float]], out: Path, title: str = "А�
     return path
 
 
-def figure_pipeline(out: Path) -> Path:
+def figure_pipeline(out: Path, n_ablations: int = 12) -> Path:
     """Схема конвейера решения: одна фигура для README, отчёта и презентации."""
 
     from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
-    fig, ax = plt.subplots(figsize=(13, 5.2), facecolor=BG)
+    fig, ax = plt.subplots(figsize=(13, 5.6), facecolor=BG)
     ax.set_facecolor(BG)
     ax.set_xlim(0, 100)
-    ax.set_ylim(0, 46)
+    ax.set_ylim(0, 47)
     ax.axis("off")
 
     def box(x, y, w, h, title, lines, color="#1b2430", accent=ACCENT):
         ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.6,rounding_size=1.2",
                                     linewidth=1.4, edgecolor=accent, facecolor=color))
-        ax.text(x + w / 2, y + h - 2.4, title, color=FG, fontsize=10.5, ha="center", va="top", weight="bold")
+        ax.text(x + w / 2, y + h - 2.2, title, color=FG, fontsize=10.5, ha="center", va="top", weight="bold")
         for i, line in enumerate(lines):
-            ax.text(x + w / 2, y + h - 6.2 - i * 3.4, line, color="#b9c7d6", fontsize=8.6, ha="center", va="top")
+            ax.text(x + w / 2, y + h - 5.8 - i * 2.9, line, color="#b9c7d6", fontsize=8.4, ha="center", va="top")
 
     def arrow(x1, y1, x2, y2, label="", dashed=False):
         ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=14,
@@ -209,36 +210,36 @@ def figure_pipeline(out: Path) -> Path:
         if label:
             ax.text((x1 + x2) / 2, (y1 + y2) / 2 + 1.2, label, color="#8fb6d8", fontsize=8, ha="center")
 
-    box(1, 30, 20, 14, "Данные", ["VIIRS I1–I5 + AUX (AF)", "Sentinel-2 pre/post + SCL,",
-                                  "Sentinel-1 VV/VH (BS)", "раскладка → fires/chips.py"], accent="#7fb2ff")
-    box(1, 5, 20, 14, "Разметка (только train)", ["маски 0/1 (AF), 0–3 (BS)",
+    box(1, 27, 20, 17, "Данные", ["VIIRS I1–I5 + AUX (AF)", "Sentinel-2 pre/post + SCL,", "Sentinel-1 VV/VH (BS)",
+                                  "раскладка → fires/chips.py"], accent="#7fb2ff")
+    box(1, 3, 20, 17, "Разметка (только train)", ["маски 0/1 (AF), 0–3 (BS)",
                                                    "разделение по fire_event_id", "315/105 и 168/56 чипов"], accent="#7fb2ff")
 
-    box(26, 30, 21, 14, "AF: активное горение", ["день/ночь по sun_zenith", "абсолютные + контекстный тест (71×71)",
+    box(26, 27, 21, 17, "AF: активное горение", ["день/ночь по sun_zenith", "абсолютные + контекстный тест",
                                                 "вода, техногенные, блик", "бинарная маска горения"], accent="#ffb03a")
-    box(26, 5, 21, 14, "BS: гарь и степень", ["NBR = (B8A − B12), dNBR", "маска SCL по обеим датам",
-                                              "пороги по 4 группам покрова", "Sentinel-1 как подтверждение"], accent="#ff8f4a")
+    box(26, 3, 21, 17, "BS: гарь и степень", ["NBR, dNBR, маска SCL по обеим датам", "пороги по покровам · или",
+                                              "модель степени (23 признака)", "Sentinel-1 как подтверждение"], accent="#ff8f4a")
 
-    box(52, 30, 20, 14, "Калибровка (train.py)", ["AF: 108 конфигураций +", "классификатор очагов",
-                                                  "BS: 64 тройки порогов + SAR", "→ weights/weights.json"], accent="#9be37f")
-    box(52, 5, 20, 14, "Оценка (evaluate.py)", ["метрика соревнования", "12 абляций: вклад механизмов",
+    box(52, 27, 20, 17, "Калибровка (train.py)", ["AF: 108 конфигураций +", "классификатор очагов",
+                                                  "BS: пороги + SAR + модель", "→ weights/weights.json"], accent="#9be37f")
+    box(52, 3, 20, 17, "Оценка (evaluate.py)", ["метрика соревнования", f"{n_ablations} абляций: вклад механизмов",
                                                 "числа → docs/numbers.json"], accent="#9be37f")
 
-    box(77, 30, 22, 14, "Ответ", ["submission.csv (RLE)", "chip_id, class_id, rle",
-                                  "проверка формата и времени", "inference.py, пул процессов", "< 30 с"], accent="#4fc3ff")
-    box(77, 5, 22, 14, "Сервис", ["каталог термоточек и контуров", "REST + GeoJSON/Shapefile + CSV",
+    box(77, 27, 22, 17, "Ответ", ["submission.csv (RLE)", "chip_id, class_id, rle",
+                                  "проверка формата и времени", "inference.py, пул процессов"], accent="#4fc3ff")
+    box(77, 3, 22, 17, "Сервис", ["каталог термоточек и контуров", "REST + GeoJSON/Shapefile + CSV",
                                   "веб-карта офлайн", "UTM 37N/38N → WGS84"], accent="#4fc3ff")
 
-    arrow(21, 37, 26, 37)
-    arrow(21, 12, 26, 12)
-    arrow(47, 37, 52, 37)
-    arrow(47, 12, 52, 12)
-    arrow(62, 30, 62, 19, dashed=True)
-    arrow(72, 37, 77, 37)
-    arrow(72, 12, 77, 12)
-    arrow(47, 34, 52, 30)
+    arrow(21, 35.5, 26, 35.5)
+    arrow(21, 11.5, 26, 11.5)
+    arrow(47, 35.5, 52, 35.5)
+    arrow(47, 11.5, 52, 11.5)
+    arrow(62, 27, 62, 20, dashed=True)
+    arrow(72, 35.5, 77, 35.5)
+    arrow(72, 11.5, 77, 11.5)
+    arrow(47, 32, 52, 27)
 
-    ax.text(50, 45.2, "Конвейер решения «КосмоФАЙР-2»: два независимых модуля, один формат ответа",
+    ax.text(50, 45.6, "Конвейер решения «КосмоФАЙР-2»: два независимых модуля, один формат ответа",
             color=FG, fontsize=12, ha="center", weight="bold")
     fig.tight_layout()
     path = out / "pipeline.png"
@@ -298,6 +299,14 @@ def main(argv: list[str] | None = None) -> int:
     if weights.get("af_mode") == "blobs" and weights.get("blob_filter"):
         base = Path(args.weights).parent if args.weights else Path("weights")
         blob_filter = BlobFilter.load(base / weights["blob_filter"])
+    severity_model = None
+    if weights.get("bs_mode") == "model" and weights.get("severity_model"):
+        from fires.severity import SeverityModel
+
+        base = Path(args.weights).parent if args.weights else Path("weights")
+        path = base / weights["severity_model"]
+        if path.exists():
+            severity_model = SeverityModel.load(path)
 
     af_pairs, bs_pairs = {}, {}
     for chip_id in dataset.chip_ids():
@@ -305,14 +314,17 @@ def main(argv: list[str] | None = None) -> int:
         if chip.kind == "af" and chip.mask is not None:
             af_pairs[chip_id] = (chip.mask.astype(bool), af_module.detect_chip(chip, af_params, blob_filter=blob_filter))
         elif chip.kind == "bs" and chip.mask_sev is not None:
-            bs_pairs[chip_id] = (chip.mask_sev.astype(np.uint8), bs_module.classify_chip(chip, bs_params))
+            bs_pairs[chip_id] = (chip.mask_sev.astype(np.uint8),
+                                 bs_module.classify_chip(chip, bs_params, severity_model=severity_model))
 
     detection_path, chip_f1 = figure_detection(dataset, af_params, blob_filter, out)
-    severity_path, severity_metrics = figure_severity(dataset, bs_params, out)
+    severity_path, severity_metrics = figure_severity(dataset, bs_params, out, severity_model=severity_model)
     map_path = figure_service_map(Path(args.catalog), out)
     overall = score_from_pairs(af_pairs, bs_pairs)
 
-    print("схема конвейера:", figure_pipeline(out))
+    n_ablations = len(evaluate_module.ablation_variants(
+        af_params, bs_params, blob_filter, severity_model=severity_model))
+    print("схема конвейера:", figure_pipeline(out, n_ablations))
 
     if args.numbers:
         rows = _ablation_rows_from_numbers(Path(args.numbers))

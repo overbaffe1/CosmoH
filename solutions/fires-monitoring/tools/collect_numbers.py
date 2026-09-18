@@ -24,6 +24,7 @@ import evaluate as evaluate_module  # noqa: E402
 from fires import af as af_module  # noqa: E402
 from fires import bs as bs_module  # noqa: E402
 from fires.chips import Dataset  # noqa: E402
+from fires.severity import SeverityModel  # noqa: E402
 from fires.weights import load_weights  # noqa: E402
 
 
@@ -87,15 +88,25 @@ def main(argv: list[str] | None = None) -> int:
     af_params = af_module.to_params(weights.get("af", {}))
     bs_params = bs_module.to_params(weights.get("bs", {}))
 
+    severity_model = None
+    if weights.get("bs_mode") == "model" and weights.get("severity_model"):
+        model_path = Path(args.weights).parent / weights["severity_model"]
+        if model_path.exists():
+            severity_model = SeverityModel.load(model_path)
+            print(f"модель степени поражения: {model_path}")
+        else:
+            print(f"[warn] не найдена {model_path} — считаю на порогах", file=sys.stderr)
+
     print("== итоговая конфигурация ==")
-    final = evaluate_module.evaluate(dataset, af_params, bs_params)
+    final = evaluate_module.evaluate(dataset, af_params, bs_params, severity_model=severity_model)
     print(json.dumps(final, ensure_ascii=False))
 
     rows: list[dict] = []
     if not args.no_ablation:
         print("== абляции ==")
-        for name, af_p, bs_p, blob in evaluate_module.ablation_variants(af_params, bs_params, None):
-            result = evaluate_module.evaluate(dataset, af_p, bs_p)
+        variants = evaluate_module.ablation_variants(af_params, bs_params, None, severity_model=severity_model)
+        for name, af_p, bs_p, blob, sev in variants:
+            result = evaluate_module.evaluate(dataset, af_p, bs_p, blob_filter=blob, severity_model=sev)
             rows.append(
                 {
                     "name": name,
@@ -128,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         "weights": str(args.weights),
         "weights_content": {
             "af_mode": weights.get("af_mode"),
+            "bs_mode": weights.get("bs_mode"),
             "af": weights.get("af"),
             "bs": weights.get("bs"),
             "train_metrics": weights.get("train_metrics"),

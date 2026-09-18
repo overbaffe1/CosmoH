@@ -136,7 +136,8 @@ def readme_score(numbers: dict) -> str:
         f"| Score на реальной обучающей части (644 чипа) | **{_fmt(final['score'])}** |\n"
         f"| F1_af / IoU_burn / mIoU_sev | {_fmt(final['f1_af'])} / {_fmt(final['iou_burn'])} / "
         f"{_fmt(final['miou_sev'])} |\n"
-        f"| Инференс | {speed.get('seconds', '—')} с на 2.2 ГБ (лимит 30 с) |"
+        f"| Инференс всей обучающей части | {speed.get('seconds', '—')} с на {speed.get('chips', '—')} чипах, "
+        f"{speed.get('jobs', '—')} процесса |"
     )
 
 
