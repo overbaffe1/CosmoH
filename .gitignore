@@ -16,3 +16,7 @@ Telegram Desktop.rar
 /data/
 /firesdata/
 fire-*.tar
+
+# Тестовая часть, распакованная рядом с репозиторием, и файлы ответа
+/test/
+/submission*.csv
