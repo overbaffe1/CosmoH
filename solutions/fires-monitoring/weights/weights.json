@@ -12,17 +12,17 @@
   },
   "bs": {
     "forest": [
-      0.2,
-      0.3,
-      0.6
+      0.25,
+      0.35,
+      0.65
     ],
     "semi": [
-      0.13,
+      0.12,
       0.21,
       0.38
     ],
     "cropland": [
-      0.12,
+      0.1,
       0.19,
       0.37
     ],
@@ -37,10 +37,10 @@
     "af_val_f1": 0.92247,
     "af_train_f1": null,
     "af_baseline_f1": 0.92179,
-    "bs_val_iou_burn": 0.46106,
-    "bs_val_miou_sev": 0.42854,
-    "bs_baseline_iou_burn": 0.46027,
-    "bs_baseline_miou_sev": 0.42358,
+    "bs_val_iou_burn": 0.48143,
+    "bs_val_miou_sev": 0.44932,
+    "bs_baseline_iou_burn": 0.47905,
+    "bs_baseline_miou_sev": 0.43334,
     "af_blob_filter_val_f1": 0.89797,
     "af_blob_filter_features_top": {
       "mean_delta": 0.06150000000000004,
@@ -60,11 +60,11 @@
         1.5
       ],
       "sar_min_drop_db": 1.0,
-      "iou_burn": 0.46165,
-      "miou_sev": 0.42962,
+      "iou_burn": 0.48143,
+      "miou_sev": 0.44932,
       "fold_scores": [
-        0.29046,
-        0.24552
+        0.3033,
+        0.2667
       ]
     }
   },

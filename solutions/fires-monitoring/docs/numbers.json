@@ -1,0 +1,218 @@
+{
+  "data_dir": "/tmp/firesdata/real/train",
+  "weights": "weights/weights.json",
+  "weights_content": {
+    "af_mode": "rules",
+    "af": {
+      "k_sigma": 3.0,
+      "delta_day": 25.0,
+      "candidate_t4": 330.0,
+      "candidate_t4_night": 295.0,
+      "min_cluster_px": 1
+    },
+    "bs": {
+      "forest": [
+        0.25,
+        0.35,
+        0.65
+      ],
+      "semi": [
+        0.12,
+        0.21,
+        0.38
+      ],
+      "cropland": [
+        0.1,
+        0.19,
+        0.37
+      ],
+      "sar_recovery": false,
+      "sar_scale": [
+        3.0,
+        1.5
+      ],
+      "sar_min_drop_db": 1.0
+    },
+    "train_metrics": {
+      "af_val_f1": 0.92247,
+      "af_train_f1": null,
+      "af_baseline_f1": 0.92179,
+      "bs_val_iou_burn": 0.48143,
+      "bs_val_miou_sev": 0.44932,
+      "bs_baseline_iou_burn": 0.47905,
+      "bs_baseline_miou_sev": 0.43334,
+      "af_blob_filter_val_f1": 0.89797,
+      "af_blob_filter_features_top": {
+        "mean_delta": 0.06150000000000004,
+        "neighbour_weak": 0.05350000000000006,
+        "max_delta": 0.04400000000000006,
+        "p90_i4": 0.04000000000000008,
+        "mean_i1": 0.01850000000000005,
+        "mean_i4": 0.017000000000000036,
+        "p90_delta": 0.00850000000000004,
+        "max_i4": 0.007000000000000029
+      },
+      "af_chosen_mode": "rules",
+      "bs_sar_selection": {
+        "sar_recovery": false,
+        "sar_scale": [
+          3.0,
+          1.5
+        ],
+        "sar_min_drop_db": 1.0,
+        "iou_burn": 0.48143,
+        "miou_sev": 0.44932,
+        "fold_scores": [
+          0.3033,
+          0.2667
+        ]
+      }
+    }
+  },
+  "dataset": {
+    "n_af": 420,
+    "n_bs": 224,
+    "af_chips_with_fire": 296,
+    "af_fire_px": 9725,
+    "bs_burn_area_ha": 236360.0,
+    "bs_severity_px": {
+      "1": 2362871,
+      "2": 2192271,
+      "3": 1353859
+    },
+    "bs_severity_share": {
+      "1": 0.3999,
+      "2": 0.371,
+      "3": 0.2291
+    },
+    "bs_cloud_frac_median": 0.0135,
+    "bs_cloud_frac_max": 0.4848
+  },
+  "final": {
+    "score": 0.59468,
+    "f1_af": 0.90934,
+    "iou_burn": 0.43247,
+    "miou_sev": 0.41682,
+    "af_counts": {
+      "tp": 8731,
+      "fp": 747,
+      "fn": 994
+    },
+    "burn_counts": {
+      "tp": 4123701,
+      "fp": 3626292,
+      "fn": 1785300
+    },
+    "iou_per_class": {
+      "1": 0.22569,
+      "2": 0.42635,
+      "3": 0.59843
+    },
+    "n_af": 420,
+    "n_bs": 224
+  },
+  "ablations": [
+    {
+      "name": "AF: без ночных порогов (единая дневная шкала)",
+      "score": 0.58179,
+      "f1_af": 0.87251,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": -0.01289
+    },
+    {
+      "name": "AF: без режима блика (обычные пороги в зоне блика)",
+      "score": 0.59468,
+      "f1_af": 0.90934,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": 0.0
+    },
+    {
+      "name": "AF: без отсева техногенных источников",
+      "score": 0.59693,
+      "f1_af": 0.91577,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": 0.00225
+    },
+    {
+      "name": "AF: без отсева одиночных пикселей",
+      "score": 0.59593,
+      "f1_af": 0.91291,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": 0.00125
+    },
+    {
+      "name": "AF: только абсолютные пороги (без контекстного теста)",
+      "score": 0.30978,
+      "f1_af": 0.09534,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": -0.2849
+    },
+    {
+      "name": "AF: без маски воды",
+      "score": 0.59492,
+      "f1_af": 0.91003,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41682,
+      "delta_score": 0.00024
+    },
+    {
+      "name": "BS: без Sentinel-1",
+      "score": 0.59464,
+      "f1_af": 0.90934,
+      "iou_burn": 0.43247,
+      "miou_sev": 0.41669,
+      "delta_score": -4e-05
+    },
+    {
+      "name": "BS: SAR с восстановлением под облаком",
+      "score": 0.49882,
+      "f1_af": 0.90934,
+      "iou_burn": 0.29534,
+      "miou_sev": 0.25729,
+      "delta_score": -0.09586
+    },
+    {
+      "name": "BS: без маскировки облаков по SCL",
+      "score": 0.58002,
+      "f1_af": 0.90934,
+      "iou_burn": 0.40822,
+      "miou_sev": 0.39626,
+      "delta_score": -0.01466
+    },
+    {
+      "name": "BS: без порогов по покрову (только USGS)",
+      "score": 0.47016,
+      "f1_af": 0.90934,
+      "iou_burn": 0.36512,
+      "miou_sev": 0.08034,
+      "delta_score": -0.12452
+    },
+    {
+      "name": "BS: без заполнения дыр",
+      "score": 0.5939,
+      "f1_af": 0.90934,
+      "iou_burn": 0.43291,
+      "miou_sev": 0.41371,
+      "delta_score": -0.00078
+    },
+    {
+      "name": "BS: без фильтрации мелких контуров",
+      "score": 0.59327,
+      "f1_af": 0.90934,
+      "iou_burn": 0.42889,
+      "miou_sev": 0.41632,
+      "delta_score": -0.00141
+    }
+  ],
+  "inference": {
+    "chips": 644,
+    "rows": 1092,
+    "seconds": 25.16,
+    "jobs": 2
+  }
+}

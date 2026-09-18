@@ -23,13 +23,20 @@ def _load(path: Path) -> dict:
 
 
 def _replace_block(text: str, marker: str, body: str) -> str:
+    """Меняет тело между ``<!-- auto:имя -->`` и ``<!-- /auto:имя -->``.
+
+    Закрывающий маркер именованный: общий ``<!-- /auto -->`` слишком легко «съедает» соседний
+    блок при нежадном поиске (первый же подходящий конец строки — уже конец следующего блока).
+    """
+
+    # тело — целые строки (возможно, ни одной), поэтому «пустой» блок тоже валиден
     pattern = re.compile(
-        rf"(<!-- auto:{re.escape(marker)} -->\n).*?(\n<!-- /auto -->)",
-        re.DOTALL,
+        rf"(<!-- auto:{re.escape(marker)} -->\n)(?:.*\n)*?(<!-- /auto:{re.escape(marker)} -->)"
     )
     if not pattern.search(text):
-        raise SystemExit(f"в тексте нет маркера auto:{marker}")
-    return pattern.sub(lambda m: m.group(1) + body + m.group(2), text, count=1)
+        raise SystemExit(f"в тексте нет маркеров auto:{marker}")
+    replacement = rf"\1{body}\n\2"
+    return pattern.sub(replacement, text, count=1)
 
 
 def _fmt(value: float) -> str:
