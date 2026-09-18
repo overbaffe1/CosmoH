@@ -1,0 +1,95 @@
+{
+  "series": {
+    "hours": 168,
+    "danger_hours_pred": 51
+  },
+  "detection": {
+    "tp": 51,
+    "fp": 0,
+    "fn": 3,
+    "tn": 114,
+    "precision": 1.0,
+    "recall": 0.9444,
+    "f1": 0.9714,
+    "csi": 0.9444
+  },
+  "lead_time_hours": 31.0,
+  "dose_budget_24h_msv": {
+    "cumulative_msv": 1.288,
+    "limit_msv": 10.0,
+    "utilization": 0.129,
+    "exceeded": false
+  },
+  "windows": [
+    {
+      "from": "2026-09-18 00:00:00+00:00",
+      "to": "2026-09-19 09:00:00+00:00",
+      "hours": 34,
+      "max_risk_index": 0.338,
+      "max_dose_eva_msv": 0.068,
+      "class": "низкий"
+    },
+    {
+      "from": "2026-09-21 03:00:00+00:00",
+      "to": "2026-09-22 08:00:00+00:00",
+      "hours": 30,
+      "max_risk_index": 0.387,
+      "max_dose_eva_msv": 0.078,
+      "class": "низкий"
+    },
+    {
+      "from": "2026-09-22 21:00:00+00:00",
+      "to": "2026-09-24 23:00:00+00:00",
+      "hours": 51,
+      "max_risk_index": 0.425,
+      "max_dose_eva_msv": 0.071,
+      "class": "низкий"
+    }
+  ],
+  "recommendation": {
+    "now": "2026-09-18 00:00:00+00:00",
+    "current_risk_index": 0.25,
+    "current_class": "умеренный",
+    "current_dose_eva_msv": 0.048,
+    "eva_allowed_now": true,
+    "next_windows": [
+      {
+        "from": "2026-09-18 00:00:00+00:00",
+        "to": "2026-09-19 09:00:00+00:00",
+        "hours": 34,
+        "max_risk_index": 0.338,
+        "max_dose_eva_msv": 0.068,
+        "class": "низкий"
+      },
+      {
+        "from": "2026-09-21 03:00:00+00:00",
+        "to": "2026-09-22 08:00:00+00:00",
+        "hours": 30,
+        "max_risk_index": 0.387,
+        "max_dose_eva_msv": 0.078,
+        "class": "низкий"
+      },
+      {
+        "from": "2026-09-22 21:00:00+00:00",
+        "to": "2026-09-24 23:00:00+00:00",
+        "hours": 51,
+        "max_risk_index": 0.425,
+        "max_dose_eva_msv": 0.071,
+        "class": "низкий"
+      }
+    ],
+    "drivers": {
+      "kp": 3.0,
+      "dst": -6.0,
+      "proton_flux_10mev": 0.10059725739135804,
+      "flare_class": "A"
+    }
+  },
+  "risk_classes": {
+    "низкий": 75,
+    "умеренный": 35,
+    "повышенный": 9,
+    "высокий": 29,
+    "критический": 20
+  }
+}
