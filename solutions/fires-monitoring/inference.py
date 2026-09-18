@@ -15,7 +15,9 @@
 Время работы — жёсткое условие кейса (30 с на тестовый набор), а чипы BS распаковываются из
 сжатых TIFF заметно дольше, чем считаются: на один BS-чип уходит ≈ 100 мс на чтение против
 ≈ 35 мс на расчёт. Поэтому чипы обрабатываются пулом процессов (``--jobs``, по умолчанию —
-число ядер процессора, не больше четырёх). Порядок строк при этом не меняется: результаты
+число ядер процессора, не больше восьми). В режиме обученной модели (``bs_mode: model``) стоимость
+BS-чипа растёт до ≈0.7 с на ядро, и именно этот режим задаёт бюджет времени: на 12 потоках тест
+считается ≈10 с, на двух ядрах — ≈20–25 с (лимит кейса 30 с на прогон). Порядок строк при этом не меняется: результаты
 собираются по исходному списку шаблона, а при любой ошибке пула происходит откат к
 последовательной обработке.
 """
@@ -45,24 +47,37 @@ def _load_solution(weights_path: Path | None):
     weights = load_weights(weights_path)
     af_params = af_module.to_params(weights.get("af", {}))
     bs_params = bs_module.to_params(weights.get("bs", {}))
+    base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parent / "weights"
     blob_filter = None
     if weights.get("af_mode") == "blobs" and weights.get("blob_filter"):
         from fires.blobfilter import BlobFilter
 
-        base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parent / "weights"
         blob_filter = BlobFilter.load(base / weights["blob_filter"])
-    return af_params, bs_params, blob_filter
+    severity_model = None
+    if weights.get("bs_mode") == "model" and weights.get("severity_model"):
+        from fires.severity import SeverityModel
+
+        path = base / weights["severity_model"]
+        try:
+            severity_model = SeverityModel.load(path)
+        except Exception as exc:
+            # Файл модели мог быть собран другой версией scikit-learn: без него решение
+            # продолжает работать на порогах dNBR, а не падает с ошибкой.
+            print(f"[warn] модель степени поражения {path} не загрузилась ({exc}); "
+                  f"работаю на порогах dNBR", file=sys.stderr)
+    return af_params, bs_params, blob_filter, severity_model
 
 
 def _init_worker(data_dir: str, weights_path: str | None) -> None:
     """Инициализация воркера: датасет и пороги читаются один раз на процесс."""
 
-    af_params, bs_params, blob_filter = _load_solution(Path(weights_path) if weights_path else None)
+    af_params, bs_params, blob_filter, severity_model = _load_solution(Path(weights_path) if weights_path else None)
     _WORKER.update(
         dataset=Dataset(Path(data_dir)),
         af_params=af_params,
         bs_params=bs_params,
         blob_filter=blob_filter,
+        severity_model=severity_model,
     )
 
 
@@ -97,7 +112,9 @@ def _process_chip(chip_id: str) -> dict:
         result["rows"].append((1, mask))
     else:
         try:
-            severity, details = bs_module.classify_chip(chip, bs_params, return_details=True)
+            severity, details = bs_module.classify_chip(
+                chip, bs_params, return_details=True, severity_model=_WORKER.get("severity_model")
+            )
             result["details"] = details
         except Exception as exc:
             result["error"] = f"BS не посчитан ({exc}), записаны пустые маски"
@@ -118,7 +135,7 @@ def process(
     jobs: int = 0,
 ) -> dict:
     t0 = time.perf_counter()
-    af_params, bs_params, _ = _load_solution(weights_path)
+    af_params, bs_params, blob_filter, severity_model = _load_solution(weights_path)
 
     dataset = Dataset(data_dir)
     template_path = data_dir / "sample_submission.csv"
@@ -137,7 +154,7 @@ def process(
     if limit:
         template_ids = template_ids[:limit]
 
-    n_jobs = jobs if jobs > 0 else min(4, os.cpu_count() or 1)
+    n_jobs = jobs if jobs > 0 else min(8, os.cpu_count() or 1)
     results: list[dict] = []
     used_jobs = 1
     if n_jobs > 1 and len(template_ids) > 4:
@@ -159,8 +176,9 @@ def process(
             results = []
     if not results:
         _init_worker(str(data_dir), str(weights_path) if weights_path else None)
-        # пороги берём из уже загруженного решения, чтобы не читать файл дважды
+        # пороги и модель берём из уже загруженного решения, чтобы не читать файлы дважды
         _WORKER["af_params"], _WORKER["bs_params"] = af_params, bs_params
+        _WORKER["blob_filter"], _WORKER["severity_model"] = blob_filter, severity_model
         results = [_process_chip(chip_id) for chip_id in template_ids]
 
     rows: list[dict] = []
@@ -221,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--output", required=True, help="путь к submission.csv")
     ap.add_argument("--weights", default=None, help="путь к weights.json (по умолчанию weights/weights.json)")
     ap.add_argument("--limit", type=int, default=None, help="обработать только первые N чипов (отладка)")
-    ap.add_argument("--jobs", type=int, default=0, help="число процессов (0 — авто: ядра, не больше четырёх)")
+    ap.add_argument("--jobs", type=int, default=0, help="число процессов (0 — авто: ядра, не больше восьми)")
     ap.add_argument("--validate", action="store_true", help="проверить результат по шаблону и границам чипов")
     args = ap.parse_args(argv)
 

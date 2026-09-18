@@ -83,6 +83,11 @@ class BSParams:
     #: шкалой USGS: чувствительность sar_scale уже учитывает разницу в биомассе,
     #: поэтому повторно масштабировать пороги под тип покрова не нужно.
     sar_class_thresholds: tuple[float, float, float] = (0.10, 0.27, 0.66)
+    #: Размер окна медианного сглаживания dNBR перед порогами (0 — выключено).
+    #: Соседние пиксели горят вместе, а одиночные выбросы dNBR (тени облаков, границы полей,
+    #: сдвиг сцен) дают россыпь ложных пикселей: медиана 3×3 убирает выбросы, не размывая контуры.
+    #: Размер выбирается в train.py по двум фолдам (0.2932 против 0.2850 у варианта без сглаживания).
+    smooth_dnbr: int = 0
 
     def groups(self) -> dict[str, tuple[float, float, float]]:
         return {"forest": self.forest, "semi": self.semi, "cropland": self.cropland, "other": self.other}
@@ -140,6 +145,14 @@ def classify(
     landcover = np.full(shape, 30, dtype=np.uint8) if landcover is None else np.asarray(landcover)
 
     dnbr = nbr_pre - nbr_post
+    if p.smooth_dnbr and p.smooth_dnbr >= 3:
+        # Невалидные пиксели заменяются на 0 до фильтрации и восстанавливаются после: медиана
+        # по соседям не должна «вытягивать» значения из облаков и воды.
+        from scipy import ndimage
+
+        filled = np.where(np.isfinite(dnbr), dnbr, 0.0)
+        smoothed = ndimage.median_filter(filled, size=int(p.smooth_dnbr))
+        dnbr = np.where(np.isfinite(dnbr), smoothed, dnbr).astype(np.float32)
     rd = dnbr / np.sqrt(np.abs(nbr_pre) + 1e-3)
 
     # 1. маски
@@ -229,15 +242,7 @@ def classify(
                 sar_info["sar_recovered_px"] = int((recover & (severity > 0)).sum())
 
     # 4. постобработка
-    burned = severity > 0
-    if p.fill_holes_mask:
-        burned = fill_holes(burned)
-    if p.min_patch_px > 1:
-        burned = remove_small_objects(burned, p.min_patch_px)
-    severity = np.where(burned, severity, 0).astype(np.uint8)
-    # после заполнения дыр могли появиться пиксели класса 0 внутри контура — присваиваем им слабую степень
-    holes = burned & (severity == 0)
-    severity = np.where(holes, np.uint8(1), severity).astype(np.uint8)
+    severity = postprocess(severity, p)
 
     if return_details:
         return severity, {
@@ -251,8 +256,41 @@ def classify(
     return severity
 
 
-def classify_chip(chip, params: BSParams | None = None, return_details: bool = False):
-    """Обёртка над :func:`classify` для :class:`fires.chips.Chip`."""
+def postprocess(severity: np.ndarray, params: BSParams | None = None) -> np.ndarray:
+    """Морфология поверх решения о степени поражения: заполнение дыр и чистка мелких контуров.
+
+    Общая для обоих режимов BS (порогов и обучаемой модели) — иначе сравнение режимов было бы
+    нечестным: часть разницы давала бы именно постобработка.
+    """
+
+    p = params or BSParams()
+    burned = severity > 0
+    if p.fill_holes_mask:
+        burned = fill_holes(burned)
+    if p.min_patch_px > 1:
+        burned = remove_small_objects(burned, p.min_patch_px)
+    severity = np.where(burned, severity, 0).astype(np.uint8)
+    # после заполнения дыр могли появиться пиксели класса 0 внутри контура — присваиваем им слабую степень
+    holes = burned & (severity == 0)
+    return np.where(holes, np.uint8(1), severity).astype(np.uint8)
+
+
+def classify_chip(chip, params: BSParams | None = None, return_details: bool = False, severity_model=None):
+    """Обёртка над :func:`classify` для :class:`fires.chips.Chip`.
+
+    Если передан ``severity_model`` (обученная модель степени поражения), решение принимает она,
+    а пороги используются только как запасной вариант. Постобработка в обоих случаях одна и та же.
+    """
+
+    if severity_model is not None:
+        severity = severity_model.predict_chip(chip)
+        severity = postprocess(severity, params)
+        if return_details:
+            return severity, {
+                "mode": "model",
+                "areas_px": {int(k): int((severity == k).sum()) for k in (0, 1, 2, 3)},
+            }
+        return severity
 
     pre, post = chip.pre, chip.post
     layers = chip.layers

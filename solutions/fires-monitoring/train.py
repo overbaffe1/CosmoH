@@ -66,13 +66,13 @@ def evaluate_af(dataset: Dataset, chip_ids: list[str], params: af_module.AFParam
     return {"f1_af": result["f1_af"], "counts": result["af_counts"], "n": len(pairs)}
 
 
-def evaluate_bs(dataset: Dataset, chip_ids: list[str], params: bs_module.BSParams) -> dict:
+def evaluate_bs(dataset: Dataset, chip_ids: list[str], params: bs_module.BSParams, severity_model=None) -> dict:
     pairs = {}
     for chip_id in chip_ids:
         chip = dataset.load(chip_id)
         if chip.mask_sev is None:
             continue
-        pred = bs_module.classify_chip(chip, params)
+        pred = bs_module.classify_chip(chip, params, severity_model=severity_model)
         pairs[chip_id] = (chip.mask_sev.astype(np.uint8), pred)
     if not pairs:
         return {"iou_burn": None, "miou_sev": None, "n": 0}
@@ -96,6 +96,18 @@ AF_GRID = {
     "candidate_t4_night": [293.0, 295.0, 300.0],
     "min_cluster_px": [1, 3],
 }
+
+#: Сколько пикселей брать с одного чипа при обучении модели степени поражения.
+SEVERITY_TRAIN_PIXELS = 4000
+#: Число итераций бустинга. Замеры на 56 отложенных чипах: 60 итераций — IoU 0.5373 / mIoU 0.5151,
+#: 90 — 0.5379 / 0.5170, 150 — 0.5381 / 0.5169. Качество выходит на плато уже к 60 итерациям, а время
+#: инференса растёт линейно (по 5 мс на итерацию и чип), поэтому берём 60: на 2 ядрах тест
+#: укладывается в 25 с вместо 35, на 12 потоках — в 10 с (лимит кейса 30 с на прогон).
+SEVERITY_ITERATIONS = 60
+#: Скорость обучения и размер деревьев (подобраны вместе с числом итераций).
+SEVERITY_LEARNING_RATE = 0.20
+SEVERITY_LEAVES = 24
+SEVERITY_MIN_SAMPLES_LEAF = 80
 
 #: Пороги dNBR по группам покрова: тройка (t1, t2, t3) на каждую группу, вокруг значений,
 #: измеренных на реальных чипах (границы классов — середины между распределениями соседних
@@ -282,9 +294,175 @@ def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose:
             sar_scale=tuple(best_sar["sar_scale"]),
             sar_min_drop_db=best_sar["sar_min_drop_db"],
         )
+
+        # --- стадия 3: сглаживание dNBR
+        # Соседние пиксели горят вместе, а одиночные выбросы dNBR (границы полей, тени, сдвиг
+        # сцен) дают россыпь ложных контуров. Размер окна выбирается по двум фолдам, как и SAR.
+        best_smooth = {"objective": -1.0, "size": 0}
+        for size in (0, 3, 5):
+            params = replace(train_params, smooth_dnbr=size)
+            scores = []
+            for _, fold_val in folds:
+                result = evaluate_bs(dataset, fold_val, params)
+                if result["iou_burn"] is not None:
+                    scores.append(0.35 * result["iou_burn"] + 0.30 * result["miou_sev"])
+            if not scores:
+                continue
+            objective = float(np.mean(scores))
+            if objective > best_smooth["objective"]:
+                best_smooth = {"objective": round(objective, 5), "size": size, "fold_scores": [round(v, 5) for v in scores]}
+                if verbose:
+                    print(f"  сглаживание dNBR {size}×{size}: objective(2 фолда)={objective:.4f}")
+        best["params"]["smooth_dnbr"] = best_smooth["size"]
+        best["smooth"] = {"size": best_smooth["size"], "fold_scores": best_smooth.get("fold_scores", [])}
+
+        train_params = replace(train_params, smooth_dnbr=best_smooth["size"])
         train_result = evaluate_bs(dataset, train_ids, train_params)
         best["train_iou_burn"] = train_result["iou_burn"]
+
+        # --- стадия 4: обучаемая модель степени поражения
+        # Порог — одно число на группу покрова, а решение о степени зависит и от запаса биомассы,
+        # и от сезона, и от текстуры пятна. Модель на градиентном бустинге учитывает всё сразу;
+        # она принимается, только если выигрывает у порогов на том же отложенном наборе.
+        model = _train_severity_model(dataset, train_ids, verbose=verbose)
+        if model is not None:
+            model_result = evaluate_bs(dataset, val_ids, train_params, severity_model=model)
+            model_objective = 0.35 * model_result["iou_burn"] + 0.30 * model_result["miou_sev"]
+            threshold_objective = 0.35 * best["iou_burn"] + 0.30 * best["miou_sev"]
+            model.metrics = {
+                "val_iou_burn": model_result["iou_burn"],
+                "val_miou_sev": model_result["miou_sev"],
+                "val_objective": round(float(model_objective), 5),
+                "thresholds_objective": round(float(threshold_objective), 5),
+            }
+            if verbose:
+                print(
+                    f"  модель степени поражения: IoU_burn={model_result['iou_burn']:.4f} "
+                    f"mIoU={model_result['miou_sev']:.4f} (objective {model_objective:.4f} против "
+                    f"{threshold_objective:.4f} у порогов)"
+                )
+            if model_objective > threshold_objective:
+                # Морфология для режима модели подбирается отдельно: модель отличает дыры внутри
+                # контура от гари, поэтому заполнение дыр ей мешает (IoU_burn 0.5376 против 0.5342
+                # на отложенных чипах), зато чистка мелких контуров помогает (0.5410 против 0.5363
+                # при 24 пикселях). На плато 24–64 пикселя качество одинаковое, берём 48.
+                best_post = select_model_postprocess(dataset, val_ids, train_params, model, verbose=verbose)
+                if verbose:
+                    print(f"  морфология модели: чистка контуров < {best_post['min_patch_px']} px, "
+                          f"дыры {'заполняются' if best_post['fill_holes_mask'] else 'не заполняются'} "
+                          f"→ IoU_burn={best_post['iou_burn']:.4f} mIoU={best_post['miou_sev']:.4f}")
+                final_params = replace(train_params, min_patch_px=best_post["min_patch_px"],
+                                       fill_holes_mask=best_post["fill_holes_mask"])
+                # Пороговый режим на тех же параметрах морфологии — честная база для сравнения.
+                threshold_result = evaluate_bs(dataset, val_ids, final_params)
+                model.metrics.update({
+                    "val_iou_burn": best_post["iou_burn"],
+                    "val_miou_sev": best_post["miou_sev"],
+                    "val_objective": best_post["objective"],
+                    "thresholds_iou_burn": threshold_result["iou_burn"],
+                    "thresholds_miou_sev": threshold_result["miou_sev"],
+                    "thresholds_objective": round(
+                        0.35 * threshold_result["iou_burn"] + 0.30 * threshold_result["miou_sev"], 5),
+                    "postprocess": {"min_patch_px": best_post["min_patch_px"],
+                                    "fill_holes_mask": best_post["fill_holes_mask"]},
+                })
+                best["params"]["min_patch_px"] = best_post["min_patch_px"]
+                best["params"]["fill_holes_mask"] = best_post["fill_holes_mask"]
+                best["iou_burn"] = best_post["iou_burn"]
+                best["miou_sev"] = best_post["miou_sev"]
+                best["severity_model"] = model
+                best["mode"] = "model"
+            else:
+                best["mode"] = "thresholds"
+        else:
+            best["mode"] = "thresholds"
     return best
+
+
+def select_model_postprocess(dataset: Dataset, val_ids: list[str], params, model,
+                             verbose: bool = True) -> dict:
+    """Подбирает морфологию для режима обученной модели по отложенным чипам.
+
+    Модель отличает внутренние «дыры» гари от выгоревших пикселей, поэтому заполнение дыр ей мешает,
+    а удаление мелких ложных контуров помогает. Поиск маленький и детерминированный: размер чистки
+    и признак заполнения дыр. Возвращает словарь с выбранными значениями и метриками.
+    """
+
+    best = {"objective": -1.0, "min_patch_px": 6, "fill_holes_mask": True}
+    for min_patch in (24, 48):
+        for fill in (False, True):
+            candidate = replace(params, min_patch_px=min_patch, fill_holes_mask=fill)
+            result = evaluate_bs(dataset, val_ids, candidate, severity_model=model)
+            if result["iou_burn"] is None:
+                continue
+            objective = 0.35 * result["iou_burn"] + 0.30 * result["miou_sev"]
+            if objective > best["objective"]:
+                best = {
+                    "objective": round(float(objective), 5),
+                    "min_patch_px": min_patch,
+                    "fill_holes_mask": fill,
+                    "iou_burn": result["iou_burn"],
+                    "miou_sev": result["miou_sev"],
+                }
+    if verbose:
+        print(f"  морфология модели: чистка контуров < {best['min_patch_px']} px, дыры "
+              f"{'заполняются' if best['fill_holes_mask'] else 'не заполняются'} → "
+              f"objective={best['objective']:.4f}")
+    return best
+
+
+def _train_severity_model(dataset: Dataset, train_ids: list[str], verbose: bool = True):
+    """Обучает модель степени поражения на подвыборке пикселей обучающих чипов.
+
+    Пиксели берутся разреженно (по ``SEVERITY_TRAIN_PIXELS`` с чипа), потому что количество
+    положительных пикселей на чипах различается на порядки; веса классов выравниваются, чтобы
+    редкие классы 2 и 3 не «растворились» в фоне.
+    """
+
+    try:
+        from fires.severity import SeverityModel, chip_features
+        from sklearn.ensemble import HistGradientBoostingClassifier
+    except Exception as exc:  # sklearn нет или модуль недоступен — остаёмся на порогах
+        if verbose:
+            print(f"  модель степени поражения недоступна ({exc}) — остаются пороги")
+        return None
+
+    rng = np.random.default_rng(SEED)
+    features, labels = [], []
+    for chip_id in train_ids:
+        chip = dataset.load(chip_id)
+        if chip.mask_sev is None:
+            continue
+        matrix, ok = chip_features(chip)
+        truth = np.asarray(chip.mask_sev, dtype=np.uint8).reshape(-1)
+        indices = np.flatnonzero(ok)
+        if indices.size > SEVERITY_TRAIN_PIXELS:
+            indices = rng.choice(indices, size=SEVERITY_TRAIN_PIXELS, replace=False)
+        features.append(matrix[indices])
+        labels.append(truth[indices])
+    if not features:
+        return None
+    X = np.concatenate(features)
+    y = np.concatenate(labels)
+    counts = np.bincount(y, minlength=4).astype(float)
+    weights = 1.0 / np.sqrt(np.maximum(counts, 1))
+    sample_weight = weights[y]
+    sample_weight *= len(sample_weight) / sample_weight.sum()
+
+    estimator = HistGradientBoostingClassifier(
+        max_iter=SEVERITY_ITERATIONS,
+        learning_rate=SEVERITY_LEARNING_RATE,
+        max_leaf_nodes=SEVERITY_LEAVES,
+        min_samples_leaf=SEVERITY_MIN_SAMPLES_LEAF,
+        l2_regularization=1.0,
+        random_state=SEED,
+        early_stopping=False,
+    )
+    estimator.fit(X, y, sample_weight=sample_weight)
+    if verbose:
+        print(f"  модель степени поражения обучена на {X.shape[0]} пикселях "
+              f"({X.shape[1]} признаков, классы {dict(zip(*np.unique(y, return_counts=True)))})")
+    return SeverityModel(estimator=estimator, kind="classifier")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -321,11 +499,19 @@ def main(argv: list[str] | None = None) -> int:
         blob_result["model"].save(model_path)
         print(f"классификатор очагов сохранён: {model_path}")
 
+    bs_model_path = None
+    if best_bs.get("mode") == "model" and best_bs.get("severity_model") is not None:
+        bs_model_path = Path(args.out).with_name("severity_model.pkl")
+        best_bs["severity_model"].save(bs_model_path)
+        print(f"модель степени поражения сохранена: {bs_model_path}")
+
     weights = {
         "version": 2,
         "seed": args.seed,
         "af_mode": af_result["mode"],
         "blob_filter": None if model_path is None else str(model_path.name),
+        "bs_mode": best_bs.get("mode", "thresholds"),
+        "severity_model": None if bs_model_path is None else str(bs_model_path.name),
         "af": best_af.get("params", {}),
         "bs": best_bs.get("params", {}),
         "train_metrics": {
@@ -336,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
             "bs_val_miou_sev": best_bs.get("miou_sev"),
             "bs_baseline_iou_burn": baseline_bs.get("iou_burn"),
             "bs_baseline_miou_sev": baseline_bs.get("miou_sev"),
+            "bs_smooth": best_bs.get("smooth"),
+            "bs_severity_model": None if best_bs.get("severity_model") is None else best_bs["severity_model"].metrics,
             "af_blob_filter_val_f1": blob_result.get("f1_af"),
             "af_blob_filter_features_top": blob_result.get("importances"),
             "af_chosen_mode": af_result["mode"],

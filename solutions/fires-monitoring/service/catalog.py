@@ -99,6 +99,15 @@ def build(
 
         blob_filter = BlobFilter.load(blob_path)
 
+    severity_model = None
+    if weights.get("bs_mode") == "model" and weights.get("severity_model"):
+        from fires.severity import SeverityModel
+
+        base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parents[1] / "weights"
+        model_path = base / weights["severity_model"]
+        if model_path.exists():
+            severity_model = SeverityModel.load(model_path)
+
     chip_ids = dataset.chip_ids()
     if max_chips:
         chip_ids = chip_ids[:max_chips]
@@ -177,7 +186,7 @@ def build(
                 )
             per_chip_report.append({"chip_id": chip_id, "kind": "af", "n_thermopoints": int(mask.sum())})
         else:
-            severity = bs_module.classify_chip(chip, bs_params)
+            severity = bs_module.classify_chip(chip, bs_params, severity_model=severity_model)
             chip_contours = mask_to_contours(
                 severity > 0,
                 chip_id=chip_id,

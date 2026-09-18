@@ -22,24 +22,29 @@ from fires import af as af_module
 from fires import bs as bs_module
 from fires.chips import Dataset
 from fires.metrics import score_from_pairs
+from fires.severity import SeverityModel
 from fires.weights import load_weights
 
 
-def collect(dataset: Dataset, af_params, bs_params, limit: int | None = None, blob_filter=None):
+def collect(dataset: Dataset, af_params, bs_params, limit: int | None = None, blob_filter=None,
+            severity_model=None):
     af_pairs, bs_pairs = {}, {}
     for chip_id in dataset.chip_ids():
         chip = dataset.load(chip_id)
         if chip.kind == "af" and chip.mask is not None:
             af_pairs[chip_id] = (chip.mask.astype(bool), af_module.detect_chip(chip, af_params, blob_filter=blob_filter))
         elif chip.kind == "bs" and chip.mask_sev is not None:
-            bs_pairs[chip_id] = (chip.mask_sev.astype(np.uint8), bs_module.classify_chip(chip, bs_params))
+            bs_pairs[chip_id] = (
+                chip.mask_sev.astype(np.uint8),
+                bs_module.classify_chip(chip, bs_params, severity_model=severity_model),
+            )
         if limit and len(af_pairs) + len(bs_pairs) >= limit:
             break
     return af_pairs, bs_pairs
 
 
-def evaluate(dataset: Dataset, af_params, bs_params, blob_filter=None) -> dict:
-    af_pairs, bs_pairs = collect(dataset, af_params, bs_params, blob_filter=blob_filter)
+def evaluate(dataset: Dataset, af_params, bs_params, blob_filter=None, severity_model=None) -> dict:
+    af_pairs, bs_pairs = collect(dataset, af_params, bs_params, blob_filter=blob_filter, severity_model=severity_model)
     result = score_from_pairs(af_pairs, bs_pairs)
     result["n_af"] = len(af_pairs)
     result["n_bs"] = len(bs_pairs)
@@ -62,26 +67,45 @@ def main(argv: list[str] | None = None) -> int:
     from fires.blobfilter import BlobFilter
 
     blob_filter = BlobFilter.load(args.blob_filter) if args.blob_filter else None
+    severity_model = load_severity_model(weights, args.weights)
     print("=== Итоговая конфигурация ===")
-    print(json.dumps(evaluate(dataset, af_params, bs_params, blob_filter=blob_filter), ensure_ascii=False, indent=2))
+    print(json.dumps(evaluate(dataset, af_params, bs_params, blob_filter=blob_filter,
+                              severity_model=severity_model), ensure_ascii=False, indent=2))
 
     if not args.ablation:
         return 0
 
     print("\n=== Абляции ===")
-    variants = ablation_variants(af_params, bs_params, blob_filter)
-    for name, af_p, bs_p, bf in variants:
-        res = evaluate(dataset, af_p, bs_p, blob_filter=bf)
+    variants = ablation_variants(af_params, bs_params, blob_filter, severity_model=severity_model)
+    for name, af_p, bs_p, bf, sm in variants:
+        res = evaluate(dataset, af_p, bs_p, blob_filter=bf, severity_model=sm)
         print(f"{name:48s} Score={res['score']:.4f}  F1_af={res['f1_af']:.4f}  IoU_burn={res['iou_burn']:.4f}  mIoU_sev={res['miou_sev']:.4f}")
     return 0
 
 
-def ablation_variants(af_params, bs_params, blob_filter=None):
+def load_severity_model(weights: dict, weights_path: str | Path | None) -> "SeverityModel | None":
+    """Загружает обученную модель степени поражения, если решение выбрало режим ``model``."""
+
+    name = weights.get("severity_model")
+    if not name or weights.get("bs_mode") != "model":
+        return None
+    base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parent / "weights"
+    path = base / name
+    if not path.exists():
+        return None
+    try:
+        return SeverityModel.load(path)
+    except Exception as exc:  # модель собрана другой версией sklearn — считаем на порогах
+        print(f"[warn] модель степени поражения {path} не загрузилась ({exc}); работаю на порогах", file=sys.stderr)
+        return None
+
+
+def ablation_variants(af_params, bs_params, blob_filter=None, severity_model=None):
     """Список абляций: каждая строка выключает ровно один механизм решения.
 
-    Возвращает список ``(название, af_params, bs_params, blob_filter)``; используется и в
-    ``evaluate.py --ablation``, и в ``tools/collect_numbers.py`` — числа отчёта и презентации
-    считаются одним и тем же набором вариантов.
+    Возвращает список ``(название, af_params, bs_params, blob_filter, severity_model)``;
+    используется и в ``evaluate.py --ablation``, и в ``tools/collect_numbers.py`` — числа отчёта
+    и презентации считаются одним и тем же набором вариантов.
     """
 
     import copy
@@ -108,26 +132,38 @@ def ablation_variants(af_params, bs_params, blob_filter=None):
         candidate_t4_night=af_params.candidate_t4,
         delta_night=af_params.delta_day,
     )
+    tw = severity_model  # сокращение: модель присутствует во всех вариантах, кроме явной абляции
+    # Абляция морфологии должна выключать активный механизм, а не повторять его: в режиме модели
+    # дыры не заполняются (модель их различает), поэтому проверяется обратный вариант.
+    fill_label = ("BS: с заполнением дыр (как в пороговом режиме)" if not bs_params.fill_holes_mask
+                  else "BS: без заполнения дыр")
+    patch_label = ("BS: без фильтрации мелких контуров" if bs_params.min_patch_px != 1
+                   else "BS: с фильтрацией мелких контуров (6 px)")
     variants = [
-        ("AF: без ночных порогов (единая дневная шкала)", day_only, bs_params, blob_filter),
-        ("AF: без режима блика (обычные пороги в зоне блика)", replace(af_params, glint_margin=0.0, glint_t4_min=0.0), bs_params, blob_filter),
-        ("AF: без отсева техногенных источников", replace(af_params, exclude_built=False), bs_params, blob_filter),
-        ("AF: без отсева одиночных пикселей", replace(af_params, isolated_guard=False), bs_params, blob_filter),
-        ("AF: только абсолютные пороги (без контекстного теста)", replace(af_params, k_sigma=1e6), bs_params, blob_filter),
-        ("AF: без маски воды", replace(af_params, exclude_water=False), bs_params, blob_filter),
-        ("BS: без Sentinel-1", af_params, replace(bs_params, use_sar=False), blob_filter),
-        ("BS: SAR с восстановлением под облаком", af_params, replace(bs_params, sar_recovery=True), blob_filter),
-        ("BS: без маскировки облаков по SCL", af_params, replace(bs_params, mask_scl=False), blob_filter),
-        ("BS: без порогов по покрову (только USGS)", af_params, replace(bs_params, semi=bs_params.forest, cropland=bs_params.forest), blob_filter),
-        ("BS: без заполнения дыр", af_params, replace(bs_params, fill_holes_mask=False), blob_filter),
-        ("BS: без фильтрации мелких контуров", af_params, replace(bs_params, min_patch_px=1), blob_filter),
+        ("AF: без ночных порогов (единая дневная шкала)", day_only, bs_params, blob_filter, tw),
+        ("AF: без режима блика (обычные пороги в зоне блика)", replace(af_params, glint_margin=0.0, glint_t4_min=0.0), bs_params, blob_filter, tw),
+        ("AF: без отсева техногенных источников", replace(af_params, exclude_built=False), bs_params, blob_filter, tw),
+        ("AF: без отсева одиночных пикселей", replace(af_params, isolated_guard=False), bs_params, blob_filter, tw),
+        ("AF: только абсолютные пороги (без контекстного теста)", replace(af_params, k_sigma=1e6), bs_params, blob_filter, tw),
+        ("AF: без маски воды", replace(af_params, exclude_water=False), bs_params, blob_filter, tw),
+        ("BS: без Sentinel-1", af_params, replace(bs_params, use_sar=False), blob_filter, tw),
+        ("BS: SAR с восстановлением под облаком", af_params, replace(bs_params, sar_recovery=True), blob_filter, tw),
+        ("BS: без маскировки облаков по SCL", af_params, replace(bs_params, mask_scl=False), blob_filter, tw),
+        ("BS: без порогов по покрову (только USGS)", af_params, replace(bs_params, semi=bs_params.forest, cropland=bs_params.forest), blob_filter, tw),
+        (fill_label, af_params, replace(bs_params, fill_holes_mask=not bs_params.fill_holes_mask), blob_filter, tw),
+        (patch_label, af_params, replace(bs_params, min_patch_px=1 if bs_params.min_patch_px != 1 else 6), blob_filter, tw),
+        ("BS: без сглаживания dNBR", af_params, replace(bs_params, smooth_dnbr=0), blob_filter, tw),
     ]
+    if severity_model is not None:
+        # Ключевая развилка BS: если решение выбрало обучаемую модель, вклад порогов виден
+        # только так — тем же набором параметров, но без модели.
+        variants.insert(0, ("BS: пороги вместо обученной модели", af_params, bs_params, blob_filter, None))
     if blob_filter is not None:  # варианты классификатора очагов имеют смысл только в режиме blobs
         variants = [
-            ("AF: без классификатора очагов (только правила)", af_params, bs_params, None),
-            ("AF: классификатор с порогом 0.95", af_params, bs_params, threshold_filter),
-            ("AF: кандидаты только по мягким порогам", af_params, bs_params, variant(use_soft_candidates=False)),
-            ("AF: без пиксельного гейта в блобе", af_params, bs_params, variant(pixel_t4=-1000.0, pixel_delta=-1000.0)),
+            ("AF: без классификатора очагов (только правила)", af_params, bs_params, None, tw),
+            ("AF: классификатор с порогом 0.95", af_params, bs_params, threshold_filter, tw),
+            ("AF: кандидаты только по мягким порогам", af_params, bs_params, variant(use_soft_candidates=False), tw),
+            ("AF: без пиксельного гейта в блобе", af_params, bs_params, variant(pixel_t4=-1000.0, pixel_delta=-1000.0), tw),
         ] + variants
     return variants
 
