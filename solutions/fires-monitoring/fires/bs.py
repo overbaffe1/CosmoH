@@ -49,12 +49,14 @@ SCL_WATER = 6
 class BSParams:
     """Пороги dNBR по группам покрова и параметры постобработки."""
 
-    #: Шкала USGS для леса: ниже t1 — не горело, t1..t2 — слабо, t2..t3 — средне, выше — сильно.
-    forest: tuple[float, float, float] = (0.10, 0.27, 0.66)
-    #: Степь/пойма: масштаб вниз по запасу биомассы.
-    semi: tuple[float, float, float] = (0.04, 0.12, 0.28)
-    #: Пашня/открытая почта: ещё ниже, но с повышенным первым порогом против фенологии.
-    cropland: tuple[float, float, float] = (0.06, 0.15, 0.30)
+    #: Лес/кустарник: границы классов выше, чем в степи — плотная биомасса даёт больший dNBR
+    #: при той же степени поражения (подобрано на реальной обучающей части).
+    forest: tuple[float, float, float] = (0.20, 0.27, 0.55)
+    #: Степь и пойма.
+    semi: tuple[float, float, float] = (0.14, 0.22, 0.40)
+    #: Пашня/открытая почта: низкие значения dNBR и высокая фенологическая изменчивость,
+    #: поэтому порог «горело» самый низкий, а границы классов сдвинуты вниз.
+    cropland: tuple[float, float, float] = (0.12, 0.19, 0.37)
     #: Застройка и снег: гарь не картируем (0 — отключено).
     other: tuple[float, float, float] = (1.0, 1.0, 1.0)
     min_patch_px: int = 6            # минимальный размер контура гари
@@ -63,9 +65,13 @@ class BSParams:
     sar_vh_drop_db: float = 1.5      # падение VH подтверждает гарь в лесу
     sar_upgrade: bool = True         # пиксели с сильным падением VH усиливают класс
     cloud_gate: bool = True          # не переклассифицировать пиксели под облаком
+    mask_scl: bool = True            # маскировать облака/тень/снег/воду по слою SCL
     scl_weight: float = 1.0          # запас: вес слоя SCL в решении
     #: Восстановление гари под облаком/тенью по Sentinel-1.
-    sar_recovery: bool = True
+    #: На реальном наборе отключено: класс, собранный из ΔVH, грубее оптического, и на
+    #: отложенной части восстановление стоит ≈ −0.14 IoU (train.py подтверждает это
+    #: перебором вариантов и записывает результат в weights.json).
+    sar_recovery: bool = False
     #: Калибровка «дБ падения VH на единицу dNBR»: лес и остальные группы покрова.
     #: Радиолокация откликается на потерю биомассы, поэтому dNBR восстанавливается
     #: из ΔVH делением на эту чувствительность (подбирается в train.py).
@@ -118,6 +124,7 @@ def classify(
     nbr_post: np.ndarray,
     landcover: np.ndarray | None = None,
     scl: np.ndarray | None = None,
+    scl_pre: np.ndarray | None = None,
     valid: np.ndarray | None = None,
     s1_vh_pre: np.ndarray | None = None,
     s1_vh_post: np.ndarray | None = None,
@@ -141,11 +148,17 @@ def classify(
         ok &= np.asarray(valid).astype(bool)
     ok &= landcover != LC_WATER
     dnbr_valid = dnbr.copy()
-    if scl is not None:
+    if scl is not None and p.mask_scl:
         scl = np.asarray(scl)
         ok &= ~np.isin(scl, SCL_BAD)
         ok &= scl != SCL_WATER
+    if scl_pre is not None and p.mask_scl:
+        # облако или тень в дате «до» портит dNBR так же, как в дате «после»
+        scl_pre = np.asarray(scl_pre)
+        ok &= ~np.isin(scl_pre, SCL_BAD)
+        ok &= scl_pre != SCL_WATER
     ok &= np.isfinite(nbr_pre) & np.isfinite(nbr_post)
+    ok &= (nbr_pre != 0.0) | (nbr_post != 0.0)  # обе даты с нулевым отражением — нет наблюдения
     dnbr_valid[~ok] = np.nan
 
     # 2. пороги по типу покрова
@@ -243,6 +256,10 @@ def classify_chip(chip, params: BSParams | None = None, return_details: bool = F
 
     pre, post = chip.pre, chip.post
     layers = chip.layers
+    if post and "SCL" in post:
+        layers.setdefault("SCL", post["SCL"])        # маска облаков на дату «после»
+    if pre and "SCL" in pre:
+        layers.setdefault("SCL_pre", pre["SCL"])     # и на дату «до»
     if not pre or not post:
         # единый стек: B8A/B12 лежат в layers, даты не разделены — тогда функции нужны явные данные
         pre = {k: v for k, v in layers.items() if k in {"B8A", "B12"}}
@@ -258,6 +275,7 @@ def classify_chip(chip, params: BSParams | None = None, return_details: bool = F
         nbr_post=nbr(scale_reflectance(post["B8A"]), scale_reflectance(post["B12"])),
         landcover=layers.get("landcover"),
         scl=layers.get("SCL"),
+        scl_pre=layers.get("SCL_pre"),
         valid=layers.get("valid"),
         s1_vh_pre=chip.s1_pre.get("VH"),
         s1_vh_post=chip.s1_post.get("VH"),

@@ -96,7 +96,9 @@ def generate_af_chip(rng, size: int = 256, with_fire: bool = True, tech_source: 
 
     # фон: температуры земли и отражения
     t5_bg = _context_noise(rng, np.full((size, size), 300.0, dtype=np.float32))    # 11,45 мкм
-    t4_bg = t5_bg - rng.uniform(2.0, 5.0)                                          # 3,74 мкм холоднее днём
+    # Реальные дневные чипы: фон I4 − I5 ≈ +8 K (канал 3,74 мкм теплее из-за отражённой
+    # солнечной радиации), ночью разница близка к нулю. Сцена генератора — дневная.
+    t4_bg = t5_bg + rng.uniform(6.0, 10.0)
     i1 = np.clip(_context_noise(rng, np.full((size, size), 0.10, dtype=np.float32), 12), 0, 1)
     i2 = np.clip(_context_noise(rng, np.full((size, size), 0.22, dtype=np.float32), 12), 0, 1)
     i3 = np.clip(_context_noise(rng, np.full((size, size), 0.18, dtype=np.float32), 12), 0, 1)
@@ -121,8 +123,10 @@ def generate_af_chip(rng, size: int = 256, with_fire: bool = True, tech_source: 
         n = int(np.clip(rng.lognormal(mean=math.log(21), sigma=0.7), 3, 400))
         target = _fire_pixels(rng, size, n)
         # субпиксельное смешение по правилу из постановки: I4 растёт на ~237 K,
-        # I5 — на ~52 K при 3,6 % горящей площади пикселя
-        frac = np.clip(rng.uniform(0.01, 0.5, size=(size, size)), 0, 1) * target
+        # I5 — на ~52 K при 3,6 % горящей площади пикселя.
+        # Доля горящей площади откалибрована по реальным чипам: у размеченных пикселей
+        # ΔT(I4) днём 22–49 K, ночью 12–52 K, что соответствует доле 0.05–0.30.
+        frac = np.clip(rng.uniform(0.05, 0.30, size=(size, size)), 0, 1) * target
         t4 = t4_bg + 237.0 * frac * rng.uniform(0.6, 1.4, (size, size))
         t5 = t5_bg + 52.0 * frac
         t4 = np.clip(t4, None, 367.0)  # насыщение канала I4 по постановке

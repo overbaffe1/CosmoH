@@ -88,9 +88,15 @@ def candidate_mask(chip, params: AFParams, cfg: BlobFilterConfig | None = None) 
     layers = chip.layers
     i4 = np.asarray(layers["I4"], dtype=np.float32)
     i5 = np.asarray(layers["I5"], dtype=np.float32)
-    landcover = np.asarray(layers.get("landcover", np.full(i4.shape, 30)), dtype=np.uint8)
+    # тип покрова может содержать NaN за границей валидной зоны — приводим безопасно
+    landcover = np.nan_to_num(np.asarray(layers.get("landcover", np.full(i4.shape, 30)), dtype=np.float32), nan=0.0).astype(
+        np.uint8
+    )
     valid = np.asarray(layers.get("valid", np.ones(i4.shape)), dtype=bool)
     delta = i4 - i5
+    # В реальных данных I4/I5 содержат NaN (нет наблюдения), а I1–I3 — NaN на ночных
+    # пролётах: пиксели без термальных каналов в анализ не берём.
+    valid = valid & np.isfinite(i4) & np.isfinite(i5)
     soft = valid & (landcover != LC_WATER) & (
         ((i4 >= params.candidate_t4) & (delta >= params.candidate_delta)) | (i4 >= params.absolute_t4)
     )
@@ -121,12 +127,27 @@ def _blob_features(chip, blob: np.ndarray, params: AFParams, cfg: BlobFilterConf
     i5 = np.asarray(layers["I5"], dtype=np.float32)
     i1 = np.asarray(layers.get("I1", np.zeros_like(i4)), dtype=np.float32)
     i3 = np.asarray(layers.get("I3", np.zeros_like(i4)), dtype=np.float32)
-    landcover = np.asarray(layers.get("landcover", np.full(i4.shape, 30)), dtype=np.uint8)
+    # тип покрова может содержать NaN за границей валидной зоны — приводим безопасно
+    landcover = np.nan_to_num(np.asarray(layers.get("landcover", np.full(i4.shape, 30)), dtype=np.float32), nan=0.0).astype(
+        np.uint8
+    )
     valid = np.asarray(layers.get("valid", np.ones_like(i4)), dtype=bool)
 
     delta = i4 - i5
-    idx = blob
+
+    def safe(values: np.ndarray, fn, default: float = 0.0) -> float:
+        """Статистика по конечным значениям: NaN в реальных данных — обычное дело."""
+
+        values = np.asarray(values, dtype=np.float64)
+        values = values[np.isfinite(values)]
+        return float(fn(values)) if values.size else default
+
+    # сам блоб считается только по пикселям с корректными термальными каналами
+    idx = blob & np.isfinite(i4) & np.isfinite(i5)
     n = int(idx.sum())
+    if n == 0:
+        idx = blob
+        n = int(idx.sum())
     ys, xs = np.nonzero(idx)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
 
@@ -147,19 +168,19 @@ def _blob_features(chip, blob: np.ndarray, params: AFParams, cfg: BlobFilterConf
     return [
         float(n),
         float(n / max(1, (y1 - y0) * (x1 - x0))),
-        float(i4[idx].max()),
-        float(i4[idx].mean()),
-        float(np.percentile(i4[idx], 90)),
-        float(delta[idx].max()),
-        float(delta[idx].mean()),
-        float(np.percentile(delta[idx], 90)),
-        float(delta[idx].std()),
-        float((i4[idx] >= params.sat_t4).mean()),
-        float(i1[idx].mean()),
-        float(i1[idx].max()),
-        float(i3[idx].mean()),
-        float(i3[idx].max()),
-        float(((i1[idx] >= params.glint_i1) & (i3[idx] >= params.glint_i3)).mean()),
+        safe(i4[idx], np.max),
+        safe(i4[idx], np.mean),
+        safe(i4[idx], lambda v: np.percentile(v, 90)),
+        safe(delta[idx], np.max),
+        safe(delta[idx], np.mean),
+        safe(delta[idx], lambda v: np.percentile(v, 90)),
+        safe(delta[idx], np.std),
+        float(np.mean(np.nan_to_num(i4[idx], nan=-1e3) >= params.sat_t4)),
+        safe(i1[idx], np.mean),
+        safe(i1[idx], np.max),
+        safe(i3[idx], np.mean),
+        safe(i3[idx], np.max),
+        safe(np.where((i1[idx] >= params.glint_i1) & (i3[idx] >= params.glint_i3), 1.0, np.nan), np.mean),
         frac(LC_BUILT),
         frac(LC_TREE) + frac(LC_SHRUB),
         frac(LC_GRASS),

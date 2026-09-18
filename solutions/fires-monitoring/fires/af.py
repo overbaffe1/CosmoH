@@ -46,14 +46,20 @@ LC_BARE = 60
 class AFParams:
     """Пороги детекции; значения по умолчанию — операционные для VIIRS 375 м."""
 
-    sat_t4: float = 367.0            # насыщение канала I4
-    absolute_t4: float = 360.0       # абсолютный порог «очень яркого» очага
-    candidate_t4: float = 320.0      # минимум для контекстного теста
+    sat_t4: float = 367.0            # насыщение канала I4 (день)
+    absolute_t4: float = 360.0       # абсолютный порог «очень яркого» очага (день)
+    candidate_t4: float = 330.0      # минимум для контекстного теста (день)
+    #: Ночные пороги. Ночью солнечный нагрев выключен: фон в I4 падает примерно до 283 K,
+    #: поэтому «дневная» планка 320 K отсекала бы почти все ночные очаги.
+    sat_t4_night: float = 340.0
+    absolute_t4_night: float = 310.0
+    candidate_t4_night: float = 295.0
     candidate_delta: float = 5.0     # мягкий порог I4 − I5 для отбора кандидатов в блобы
-    delta_day: float = 15.0          # I4 − I5 днём
+    delta_day: float = 25.0          # I4 − I5 днём (на реальных чипах фон τ4 днём прогревается до 310–315 K)
     delta_night: float = 10.0        # I4 − I5 ночью
-    k_sigma: float = 3.0             # множитель σ фона в контекстном тесте
+    k_sigma: float = 2.0             # множитель σ фона в контекстном тесте
     bg_window: int = 71              # окно оценки фона, пикселей
+    exclude_water: bool = True       # маскировать воду (WorldCover 80) по SCL-эквиваленту
     exclude_built: bool = True       # отсев застройки/промплощадок
     built_t4_margin: float = 8.0     # насколько ΔT выше порога должен быть пиксель в застройке
     built_min_cluster: int = 4       # минимальная площадь очага в застройке
@@ -111,7 +117,10 @@ def detect(
         landcover = np.asarray(landcover)
 
     # 1. экранирование
-    screen = valid & (landcover != LC_WATER)
+    # В реальных данных I4/I5 содержат NaN там, где наблюдения нет (край полосы обзора,
+    # маскирование): такие пиксели не валидны по определению.
+    valid = valid & np.isfinite(i4) & np.isfinite(i5)
+    screen = valid & ((landcover != LC_WATER) if p.exclude_water else True)
     glint = np.zeros(shape, dtype=bool)
     if i1 is not None and i3 is not None:
         i1 = np.asarray(i1, dtype=np.float32)
@@ -120,18 +129,21 @@ def detect(
         # Полностью выкидывать такие пиксели нельзя: очаг может оказаться внутри пятна блика,
         # поэтому зона блика не исключается из анализа, а переводится в «подозрительный» режим,
         # где требуются более сильные признаки горения (см. ниже).
-        glint = (i1 >= p.glint_i1) & (i3 >= p.glint_i3)
+        glint = (i1 >= p.glint_i1) & (i3 >= p.glint_i3)  # NaN (ночь) даёт False — это корректно
 
-    # 2. абсолютные тесты
-    saturated = i4 >= p.sat_t4
-    absolute = i4 >= p.absolute_t4
-    candidate = screen & ((i4 >= p.candidate_t4) | absolute | saturated)
+    # 2. абсолютные тесты; пороги зависят от времени суток
+    night = bool(sun_zenith is not None and float(np.nanmedian(np.asarray(sun_zenith))) >= p.night_sun_zenith)
+    sat_threshold = p.sat_t4_night if night else p.sat_t4
+    absolute_threshold = p.absolute_t4_night if night else p.absolute_t4
+    candidate_threshold = p.candidate_t4_night if night else p.candidate_t4
+    saturated = i4 >= sat_threshold
+    absolute = i4 >= absolute_threshold
+    candidate = screen & ((i4 >= candidate_threshold) | absolute | saturated)
 
     # 3. контекстный тест
     mean_bg, std_bg, counts = _background_stats(i4, candidate, screen, p.bg_window)
     mean_bg = np.where(counts > 0, mean_bg, np.nanmean(i4[screen]) if screen.any() else i4)
     delta = i4 - i5
-    night = sun_zenith is not None and float(np.median(np.asarray(sun_zenith))) >= p.night_sun_zenith
     delta_threshold = p.delta_night if night else p.delta_day
     contextual = candidate & (i4 - mean_bg > p.k_sigma * std_bg.clip(0.5, None)) & (delta > delta_threshold)
     if glint.any():
@@ -153,7 +165,7 @@ def detect(
                 sizes = np.bincount(labels.ravel())
                 keep_ids = np.flatnonzero(sizes >= max(p.built_min_cluster, p.min_cluster_px))
                 keep_ids = keep_ids[keep_ids != 0]
-                strong = (delta > delta_threshold + p.built_t4_margin) | (i4 >= p.sat_t4)
+                strong = (delta > delta_threshold + p.built_t4_margin) | (i4 >= sat_threshold)
                 keep_mask = np.isin(labels, keep_ids) & strong
                 fire = (fire & ~built) | (fire & built & keep_mask)
         # на пашне и открытой почве одиночные пиксели без устойчивого контекста — шум
@@ -165,7 +177,7 @@ def detect(
     # 4b. одиночные слабые пиксели: у горящего пикселя рядом почти всегда есть сосед
     if p.isolated_guard:
         neighbors = box_count(fire, 1) - fire.astype(np.float32)
-        weak = fire & (neighbors == 0) & (delta < delta_threshold + 3.0) & (i4 < p.absolute_t4)
+        weak = fire & (neighbors == 0) & (delta < delta_threshold + 3.0) & (i4 < absolute_threshold)
         fire = fire & ~weak
 
     # 5. постобработка
@@ -184,6 +196,8 @@ def detect(
             "contextual_px": int(contextual.sum()),
             "fire_px": int(fire.sum()),
             "background_mean_t4": float(np.nanmean(mean_bg)),
+            "night": bool(night),
+            "thresholds": {"sat": sat_threshold, "absolute": absolute_threshold, "candidate": candidate_threshold},
         }
     return fire
 

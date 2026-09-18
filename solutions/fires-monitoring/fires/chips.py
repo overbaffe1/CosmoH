@@ -30,6 +30,27 @@ import tifffile
 AF_STACK_ORDER = ("I1", "I2", "I3", "I4", "I5")
 BS_STACK_ORDER = ("B2", "B3", "B4", "B5", "B6", "B7", "B8A", "B11", "B12", "SCL")
 
+#: Раскладка организаторов (проверена на обучающей части, 18.09.2026).
+#: AF: одна папка на слой, но сами слои — многоканальные стеки:
+#:   ``AF_tr_000001_VIIRS_I1-I5.tif`` — I1, I2, I3 (отражение), I4, I5 (K),
+#:       зенитный угол Солнца, зенитный угол сенсора, маска валидности;
+#:   ``AF_tr_000001_AUX.tif`` — тип покрова WorldCover, высота DEM, температура
+#:       приземного воздуха (K), относительная влажность (%), скорость ветра (м/с);
+#:   ``AF_tr_000001_MASK.tif`` — бинарный эталон (только обучающая часть).
+#: BS:
+#:   ``BS_tr_000001_Sentinel-2_pre.tif`` / ``_post.tif`` — 10 каналов B2…B12, SCL;
+#:   ``BS_tr_000001_Sentinel-1_pre.tif`` / ``_post.tif`` — VV, VH (дБ ×100, int16);
+#:   ``BS_tr_000001_AUX.tif`` — DEM, идентификатор исходной сцены, тип покрова;
+#:   ``BS_tr_000001_MASK.tif`` — степени поражения 0–3.
+#: Плюс ``meta.csv`` в корне и/или в подпапках (af/, bs/).
+AF_VIIRS_STACK = ("I1", "I2", "I3", "I4", "I5", "sun_zenith", "sensor_zenith", "valid")
+AF_AUX_STACK = ("landcover", "DEM", "temperature_2m", "rel_humidity", "wind_speed")
+BS_S1_STACK = ("VV", "VH")
+BS_AUX_STACK = ("DEM", "scene_id", "landcover")
+
+#: Идентификатор чипа: ``AF_tr_000001``, ``BS_te_000123``, ``af_train_0000``.
+CHIP_ID_RE = re.compile(r"^(?:af|bs)_[a-z]{2,5}_\d+", re.I)
+
 #: Регулярные выражения распознавания слоёв. Порядок важен: более специфичные — раньше.
 LAYER_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("B8A", re.compile(r"(?:^|[^a-z0-9])b8a(?:[^a-z0-9]|$)", re.I)),
@@ -86,8 +107,11 @@ def read_raster(path: str | Path) -> np.ndarray:
     """
 
     arr = tifffile.imread(str(path))
-    if arr.ndim == 3 and arr.shape[-1] in (3, 4) and arr.shape[0] > 8:
-        arr = arr[..., 0]  # RGB-превью: берём первый канал
+    # RGB-превью (uint8, каналы последней осью) читаем первым каналом: это картинка, а не данные.
+    # Проверка типа важна: трёхканальный вспомогательный стек организаторов — int16, и его
+    # терять нельзя (иначе от AUX остаётся только DEM).
+    if arr.ndim == 3 and arr.dtype == np.uint8 and arr.shape[-1] in (3, 4) and min(arr.shape[:2]) > 8:
+        arr = arr[..., 0]
     return arr
 
 
@@ -133,17 +157,23 @@ class Dataset:
         self._index_files()
 
     def _read_meta(self) -> dict[str, dict]:
+        """Читает ``meta.csv`` — в корне набора и/или в подпапках (``af/``, ``bs/``).
+
+        В обучающей части организаторов метаданные лежат по одной таблице на подзадачу;
+        колонки дополняют друг друга, поэтому таблицы объединяются по ``chip_id``.
+        """
+
         import csv
 
-        path = self.root / "meta.csv"
-        if not path.exists():
-            return {}
         out: dict[str, dict] = {}
-        with path.open(newline="", encoding="utf-8") as fh:
-            for row in csv.DictReader(fh):
-                chip_id = row.get("chip_id") or row.get("id") or row.get("chip")
-                if chip_id:
-                    out[str(chip_id)] = row
+        for path in sorted(self.root.rglob("meta.csv")):
+            with path.open(newline="", encoding="utf-8") as fh:
+                for row in csv.DictReader(fh):
+                    chip_id = row.get("chip_id") or row.get("id") or row.get("chip")
+                    if not chip_id:
+                        continue
+                    chip_id = str(chip_id)
+                    out.setdefault(chip_id, {}).update({k: v for k, v in row.items() if v not in (None, "")})
         return out
 
     def _index_files(self) -> None:
@@ -151,11 +181,15 @@ class Dataset:
             if not path.is_file() or not gapless(path):
                 continue
             name = path.stem
-            for meta_id in self.meta:
+            for meta_id in sorted(self.meta, key=len, reverse=True):
                 if name.startswith(meta_id):
                     self.files.setdefault(meta_id, []).append(path)
                     break
             else:
+                match = CHIP_ID_RE.match(name)
+                if match:
+                    self.files.setdefault(match.group(0), []).append(path)
+                    continue
                 # чип без meta.csv: идентификатор — часть имени до последнего токена слоя
                 stem = re.sub(r"_(pre|post|s1|mask|mask_sev|valid|scl|landcover|dem|slope|aspect|i[1-5]|b\d+a?)$", "", name, flags=re.I)
                 self.files.setdefault(stem, []).append(path)
@@ -196,6 +230,70 @@ class Dataset:
                 return name, date
         return "unknown", date
 
+    @staticmethod
+    def _descriptor(stem: str, chip_id: str) -> str:
+        """Часть имени файла после идентификатора чипа: ``AF_tr_1_AUX`` → ``aux``."""
+
+        rest = stem[len(chip_id):] if stem.lower().startswith(chip_id.lower()) else stem
+        return rest.strip("_- .").lower()
+
+    @staticmethod
+    def _assign_stack(chip: Chip, target: dict, arr: np.ndarray, order: tuple[str, ...]) -> None:
+        """Раскладывает многоканальный стек по именам слоёв (без перезаписи)."""
+
+        stack = arr if arr.ndim == 3 else arr[..., None]
+        for index, name in enumerate(order):
+            if index < stack.shape[2]:
+                target.setdefault(name, stack[..., index])
+
+    def load_case_layout(self, chip: Chip, descriptor: str, path: Path) -> bool:
+        """Распознаёт раскладку организаторов (многоканальные стеки).
+
+        Возвращает ``True``, если файл обработан здесь; ``False`` — если это обычный
+        одноканальный файл, и его должен разобрать общий путь :meth:`load`.
+        """
+
+        kind = chip.kind
+        if "viirs" in descriptor:
+            self._assign_stack(chip, chip.layers, read_raster(path), AF_VIIRS_STACK)
+            return True
+        if "sentinel-2" in descriptor:
+            date = "post" if "post" in descriptor else "pre"
+            target = chip.post if date == "post" else chip.pre
+            arr = read_raster(path)
+            stack = arr if arr.ndim == 3 else arr[..., None]
+            index = BS_STACK_ORDER.index("SCL") if "SCL" in BS_STACK_ORDER else -1
+            # Стек даты разбирается без SCL: это служебный слой (облака/тень/вода), а не
+            # канал отражательной способности. Обе даты хранятся отдельно — облако портит
+            # dNBR с любой стороны.
+            reflectance = tuple(name for name in BS_STACK_ORDER if name != "SCL")
+            self._assign_stack(chip, target, arr, reflectance)
+            if 0 <= index < stack.shape[2]:
+                chip.layers.setdefault("SCL" if date == "post" else "SCL_pre", stack[..., index])
+            return True
+        if "sentinel-1" in descriptor:
+            date = "post" if "post" in descriptor else "pre"
+            target = chip.s1_post if date == "post" else chip.s1_pre
+            self._assign_stack(chip, target, read_raster(path), BS_S1_STACK)
+            return True
+        if "aux" in descriptor:
+            order = AF_AUX_STACK if kind == "af" else BS_AUX_STACK
+            self._assign_stack(chip, chip.layers, read_raster(path), order)
+            return True
+        if "mask" in descriptor:
+            arr = read_raster(path)
+            arr = np.asarray(arr)
+            if arr.ndim == 3:
+                arr = arr[..., 0]
+            if kind == "bs":
+                # эталон BS — степени поражения 0–3; бинарная маска «гарь/не гарь» выводится из неё
+                chip.mask_sev = arr.astype(np.uint8)
+                chip.mask = arr.astype(np.uint8) > 0
+            else:
+                chip.mask = arr.astype(bool)
+            return True
+        return False
+
     def load(self, chip_id: str) -> Chip:
         paths = self.files.get(chip_id, [])
         if not paths:
@@ -205,6 +303,9 @@ class Dataset:
         stacks: list[np.ndarray] = []
 
         for path in paths:
+            descriptor = self._descriptor(path.stem, chip_id)
+            if self.load_case_layout(chip, descriptor, path):
+                continue
             layer, date = self._classify(path)
             arr = read_raster(path)
             if arr.ndim == 3 and arr.shape[0] <= 12:  # (C, H, W) — многоканальный стек
@@ -236,11 +337,12 @@ class Dataset:
             else:
                 for i, name in enumerate(BS_STACK_ORDER):
                     if i < stack.shape[0]:
-                        chip.layers.setdefault(name, stack[i])
-
-        # если BS подан единым стеком pre/post без явных дат — делим по порядку каналов
-        if kind == "bs" and not chip.pre and any(k in chip.layers for k in BS_STACK_ORDER):
-            pass  # слои уже в chip.layers, решение работает и так
+                        # В реальной поставке Sentinel-2 приходит одним стеком (B2…B12 + SCL):
+                        # SCL — служебный слой, он идёт в layers, а не в стеки дат.
+                        if name == "SCL":
+                            chip.layers.setdefault("SCL", stack[i])
+                        else:
+                            chip.layers.setdefault(name, stack[i])
 
         return chip
 

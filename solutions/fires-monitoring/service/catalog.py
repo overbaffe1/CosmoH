@@ -5,8 +5,11 @@
 работать «на заранее подготовленном ограниченном наборе сцен». Поэтому каталог строится
 из любой части набора, где привязка известна:
 
-* ``chips_geo.csv`` — файл вида ``chip_id,origin_lon,origin_lat,gsd,date,kind`` в корне набора;
-  если он есть, каталог получается полностью «географическим» (реальный режим работы сервиса);
+* ``meta.csv`` с координатами чипов (``epsg``, ``x_min``, ``y_min``, ``gsd``) — так поставляется
+  обучающая часть кейса: чипы заданы в UTM, а модуль :mod:`fires.geo` переводит их в WGS84 без
+  внешних зависимостей. Это реальный режим работы сервиса;
+* ``chips_geo.csv`` — файл вида ``chip_id,origin_lon,origin_lat,gsd,date,kind`` в корне набора
+  (резервный вариант, если привязка дана как долгота/широта);
 * если файла нет, каталог собирается в **демонстрационном** режиме: чипы размещаются на
   регулярной сетке в заданном регионе, чтобы карта, контуры и справка были наглядными.
   Это честно помечается в каталоге полем ``"mode": "demo"`` и не влияет на submission.csv.
@@ -37,6 +40,20 @@ import numpy as np
 from fires import af as af_module
 from fires import bs as bs_module
 from fires.chips import Dataset
+from fires import geo
+
+def _clean_date(meta: dict, kind: str) -> str:
+    """Дата сцены без NaN: у BS это дата «после», у AF — время съёмки."""
+
+    candidates = ("date_post", "acq_datetime") if kind == "bs" else ("acq_datetime", "date_post")
+    for key in candidates:
+        value = meta.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in {"nan", "nat", "none"}:
+            return text[:10]
+    return ""
 from fires.vectorize import contours_report, mask_to_contours, pixel_to_lonlat
 from fires.weights import load_weights
 
@@ -61,6 +78,9 @@ def build(
     weights_path: str | Path | None = None,
     blob_path: str | Path | None = None,
     demo_origin: tuple[float, float] = DEMO_ORIGIN,
+    max_chips: int = 0,
+    max_bs: int = 0,
+    min_contour_ha: float = 0.0,
 ) -> dict:
     data_dir = Path(data_dir)
     dataset = Dataset(data_dir)
@@ -79,23 +99,49 @@ def build(
 
         blob_filter = BlobFilter.load(blob_path)
 
-    geo = _read_geo(data_dir / "chips_geo.csv")
-    mode = "geo" if geo else "demo"
+    chip_ids = dataset.chip_ids()
+    if max_chips:
+        chip_ids = chip_ids[:max_chips]
+    if max_bs:
+        # BS-контуры занимают основную часть файла: оставляем крупнейшие по площади гари
+        af_ids = [c for c in chip_ids if dataset.kind_of(c) == "af"]
+        bs_ids = [c for c in chip_ids if dataset.kind_of(c) == "bs"]
+        bs_ids.sort(key=lambda c: float(dataset.meta.get(c, {}).get("burn_area_ha") or 0.0), reverse=True)
+        chip_ids = af_ids + bs_ids[:max_bs]
+    geo_rows = _read_geo(data_dir / "chips_geo.csv")
+    has_utm = any(
+        row.get("epsg") is not None and row.get("x_min") is not None for row in dataset.meta.values()
+    )
+    mode = "geo" if (geo_rows or has_utm) else "demo"
 
     thermopoints: list[dict] = []
     contours: list[dict] = []
     per_chip_report: list[dict] = []
     demo_index = 0
 
-    for chip_id in dataset.chip_ids():
+    for chip_id in chip_ids:
         chip = dataset.load(chip_id)
-        row = geo.get(chip_id, {})
-        if row:
+        row = geo_rows.get(chip_id, {})
+        utm = geo.utm_zone_from_epsg(chip.meta.get("epsg"))
+        if utm and chip.meta.get("x_min") is not None:
+            # Реальные координаты из meta.csv: пиксель (y, x) → UTM → WGS84.
+            zone, northern = utm
+            gsd = float(chip.meta.get("gsd") or (375.0 if chip.kind == "af" else 20.0))
+            x_min = float(chip.meta.get("x_min"))
+            y_min = float(chip.meta.get("y_min"))
+            height = float(chip.meta.get("height") or chip.shape[0])
+            y_max = y_min + height * gsd
+            date = _clean_date(chip.meta, chip.kind)
+
+            def transform(px: float, py: float, _x=x_min, _ymax=y_max, _gsd=gsd, _z=zone, _n=northern):
+                return geo.utm_to_lonlat(_x + (px + 0.5) * _gsd, _ymax - (py + 0.5) * _gsd, _z, _n)
+
+        elif row:
             origin_lon = float(row["origin_lon"])
             origin_lat = float(row["origin_lat"])
             gsd = float(row.get("gsd") or chip.meta.get("gsd") or 20.0)
-            date = str(row.get("date") or chip.meta.get("date_post") or chip.meta.get("acq_datetime") or "")
-            transform = pixel_to_lonlat(origin_lon, origin_lat, gsd)
+            date = str(row.get("date") or _clean_date(chip.meta, chip.kind))
+            transform = pixel_to_lonlat(origin_lon, origin_lat, gsd)  # noqa: F841 (используется ниже)
         else:
             gsd = float(chip.meta.get("gsd") or (375.0 if chip.kind == "af" else 20.0))
             # Демо-раскладка: компактная сетка, чипы BS — сверху, AF — отдельным блоком ниже
@@ -108,7 +154,7 @@ def build(
                 origin_lon = demo_origin[0] + (demo_index % columns) * step
                 origin_lat = demo_origin[1] - (demo_index // columns) * step
             demo_index += 1
-            date = str(chip.meta.get("acq_datetime") or chip.meta.get("date_post") or "2024-08-01")
+            date = str(chip.meta.get("acq_datetime") or chip.meta.get("date_post") or "2024-08-01")  # демо-режим
             transform = pixel_to_lonlat(origin_lon, origin_lat, gsd)
 
         if chip.kind == "af":
@@ -139,9 +185,15 @@ def build(
                 min_area_px=max(4, int(bs_params.min_patch_px)),
                 extra={"date": date[:10]},
             )
-            for n, contour in enumerate(chip_contours):
+            px_ha = (gsd**2) / 10_000.0
+            kept = 0
+            for contour in chip_contours:
+                area_ha = contour.area_px * px_ha
+                if min_contour_ha and area_ha < min_contour_ha:
+                    continue  # мелкие контуры не попадают в каталог: их десятки тысяч
                 ring = contour.to_ring(transform)
-                px_ha = (gsd**2) / 10_000.0
+                n = kept
+                kept += 1
                 contours.append(
                     {
                         "id": f"{chip_id}_c{n}",
@@ -189,8 +241,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--out", default="service/catalog.json")
     ap.add_argument("--weights", default="weights/weights.json")
+    ap.add_argument("--max-chips", type=int, default=0, help="ограничить число чипов (для компактного каталога)")
+    ap.add_argument("--max-bs", type=int, default=0, help="оставить N BS-чипов с наибольшей площадью гари")
+    ap.add_argument("--min-contour-ha", type=float, default=0.0, help="не включать контуры меньше этой площади")
     args = ap.parse_args(argv)
-    print(json.dumps(build(args.data_dir, args.out, args.weights), ensure_ascii=False, indent=2))
+    print(json.dumps(
+        build(
+            args.data_dir,
+            args.out,
+            args.weights,
+            max_chips=args.max_chips,
+            max_bs=args.max_bs,
+            min_contour_ha=args.min_contour_ha,
+        ),
+        ensure_ascii=False,
+        indent=2,
+    ))
     return 0
 
 

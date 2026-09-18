@@ -69,10 +69,25 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print("\n=== Абляции ===")
-    # В режиме классификатора очагов правила AF задают состав кандидатов, а решение
-    # принимает модель, поэтому варианты отключают именно механизмы классификатора.
+    variants = ablation_variants(af_params, bs_params, blob_filter)
+    for name, af_p, bs_p, bf in variants:
+        res = evaluate(dataset, af_p, bs_p, blob_filter=bf)
+        print(f"{name:48s} Score={res['score']:.4f}  F1_af={res['f1_af']:.4f}  IoU_burn={res['iou_burn']:.4f}  mIoU_sev={res['miou_sev']:.4f}")
+    return 0
+
+
+def ablation_variants(af_params, bs_params, blob_filter=None):
+    """Список абляций: каждая строка выключает ровно один механизм решения.
+
+    Возвращает список ``(название, af_params, bs_params, blob_filter)``; используется и в
+    ``evaluate.py --ablation``, и в ``tools/collect_numbers.py`` — числа отчёта и презентации
+    считаются одним и тем же набором вариантов.
+    """
+
     import copy
 
+    # В режиме классификатора очагов правила AF задают состав кандидатов, а решение
+    # принимает модель, поэтому варианты отключают именно механизмы классификатора.
     def variant(**config_changes):
         if blob_filter is None:
             return None
@@ -86,21 +101,35 @@ def main(argv: list[str] | None = None) -> int:
         threshold_filter = copy.deepcopy(blob_filter)
         threshold_filter.threshold = 0.95
 
-    variants: list[tuple[str, object, object, object]] = [
-        ("AF: только правила (без классификатора очагов)", af_params, bs_params, None),
-        ("AF: классификатор с порогом 0.95 вместо подобранного", af_params, bs_params, threshold_filter),
-        ("AF: кандидаты только по мягким порогам", af_params, bs_params, variant(use_soft_candidates=False)),
-        ("AF: без пиксельного гейта в блобе", af_params, bs_params, variant(pixel_t4=-1000.0, pixel_delta=-1000.0)),
+    day_only = replace(
+        af_params,
+        sat_t4_night=af_params.sat_t4,
+        absolute_t4_night=af_params.absolute_t4,
+        candidate_t4_night=af_params.candidate_t4,
+        delta_night=af_params.delta_day,
+    )
+    variants = [
+        ("AF: без ночных порогов (единая дневная шкала)", day_only, bs_params, blob_filter),
+        ("AF: без режима блика (обычные пороги в зоне блика)", replace(af_params, glint_margin=0.0, glint_t4_min=0.0), bs_params, blob_filter),
+        ("AF: без отсева техногенных источников", replace(af_params, exclude_built=False), bs_params, blob_filter),
+        ("AF: без отсева одиночных пикселей", replace(af_params, isolated_guard=False), bs_params, blob_filter),
+        ("AF: только абсолютные пороги (без контекстного теста)", replace(af_params, k_sigma=1e6), bs_params, blob_filter),
+        ("AF: без маски воды", replace(af_params, exclude_water=False), bs_params, blob_filter),
         ("BS: без Sentinel-1", af_params, replace(bs_params, use_sar=False), blob_filter),
-        ("BS: SAR без восстановления под облаком", af_params, replace(bs_params, sar_recovery=False), blob_filter),
+        ("BS: SAR с восстановлением под облаком", af_params, replace(bs_params, sar_recovery=True), blob_filter),
+        ("BS: без маскировки облаков по SCL", af_params, replace(bs_params, mask_scl=False), blob_filter),
         ("BS: без порогов по покрову (только USGS)", af_params, replace(bs_params, semi=bs_params.forest, cropland=bs_params.forest), blob_filter),
         ("BS: без заполнения дыр", af_params, replace(bs_params, fill_holes_mask=False), blob_filter),
         ("BS: без фильтрации мелких контуров", af_params, replace(bs_params, min_patch_px=1), blob_filter),
     ]
-    for name, af_p, bs_p, bf in variants:
-        res = evaluate(dataset, af_p, bs_p, blob_filter=bf)
-        print(f"{name:48s} Score={res['score']:.4f}  F1_af={res['f1_af']:.4f}  IoU_burn={res['iou_burn']:.4f}  mIoU_sev={res['miou_sev']:.4f}")
-    return 0
+    if blob_filter is not None:  # варианты классификатора очагов имеют смысл только в режиме blobs
+        variants = [
+            ("AF: без классификатора очагов (только правила)", af_params, bs_params, None),
+            ("AF: классификатор с порогом 0.95", af_params, bs_params, threshold_filter),
+            ("AF: кандидаты только по мягким порогам", af_params, bs_params, variant(use_soft_candidates=False)),
+            ("AF: без пиксельного гейта в блобе", af_params, bs_params, variant(pixel_t4=-1000.0, pixel_delta=-1000.0)),
+        ] + variants
+    return variants
 
 
 if __name__ == "__main__":

@@ -5,3 +5,8 @@ venv/
 .pytest_cache/
 .ipynb_checkpoints/
 *.log
+
+# Локальные дампы переписки и архивы кейса: не часть решения
+Telegram Desktop.rar
+*.part[0-9][0-9][0-9].rar
+/tmp/

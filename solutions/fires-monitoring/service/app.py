@@ -367,8 +367,8 @@ _PAGE = """<!doctype html>
 <header>
  <h1>🛰 КосмоФАЙР-2</h1>
  <span class="muted" id="mode"></span>
- <span class="muted">bbox</span><input id="bbox" size="26" value="90.2,50.6,93.0,53.2">
- <span class="muted">даты</span><input id="d1" size="10" value="2024-01-01"><input id="d2" size="10" value="2024-12-31">
+ <span class="muted">bbox</span><input id="bbox" size="26" value="38.5,45.5,47.5,53.5">
+ <span class="muted">даты</span><input id="d1" size="10" value="2019-01-01"><input id="d2" size="10" value="2025-12-31">
  <button onclick="load()">Обновить</button>
  <a class="muted" href="api/export/contours.geojson">GeoJSON</a>
  <a class="muted" href="api/export/contours.shp">Shapefile</a>

@@ -85,18 +85,25 @@ def evaluate_bs(dataset: Dataset, chip_ids: list[str], params: bs_module.BSParam
     }
 
 
+#: Сетка поиска для AF. Диапазоны взяты вокруг значений, найденных на реальной
+#: обучающей части: днём фон τ4 прогревается, поэтому порог кандидатов выше «школьных» 320 K,
+#: а ночью, наоборот, ниже. Отдельная ось — ночной порог кандидатов: по этим чипам
+#: ошибка предыдущего приближения была максимальной.
 AF_GRID = {
-    "k_sigma": [2.0, 2.5, 3.0, 4.0],
-    "delta_day": [10.0, 15.0, 20.0],
-    "candidate_t4": [310.0, 315.0, 320.0, 325.0],
-    "min_cluster_px": [1, 3, 5],
+    "k_sigma": [2.0, 3.0],
+    "delta_day": [20.0, 25.0, 30.0],
+    "candidate_t4": [325.0, 330.0, 335.0],
+    "candidate_t4_night": [293.0, 295.0, 300.0],
+    "min_cluster_px": [1, 3],
 }
 
-#: Множители к базовым порогам dNBR для групп покрова (степь, пашня) — «обучение» порогов.
+#: Пороги dNBR по группам покрова: тройка (t1, t2, t3) на каждую группу, вокруг значений,
+#: измеренных на реальных чипах (границы классов — середины между распределениями соседних
+#: классов).
 BS_GRID = {
-    "semi": [(0.03, 0.08, 0.20), (0.04, 0.12, 0.28), (0.05, 0.14, 0.32), (0.06, 0.16, 0.36)],
-    "cropland": [(0.05, 0.12, 0.26), (0.06, 0.15, 0.30), (0.08, 0.18, 0.36), (0.10, 0.22, 0.42)],
-    "offset": [-0.02, 0.0, 0.02],  # сдвиг порогов леса относительно шкалы USGS
+    "forest": [(0.15, 0.27, 0.55), (0.20, 0.30, 0.60), (0.25, 0.35, 0.65), (0.20, 0.25, 0.50)],
+    "semi": [(0.08, 0.19, 0.37), (0.12, 0.21, 0.38), (0.14, 0.22, 0.40), (0.16, 0.25, 0.44)],
+    "cropland": [(0.08, 0.17, 0.34), (0.10, 0.19, 0.37), (0.12, 0.19, 0.37), (0.14, 0.22, 0.42)],
 }
 
 
@@ -195,17 +202,15 @@ def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose:
     import itertools
 
     best = {"objective": -1.0, "params": {}}
-    combos = list(itertools.product(BS_GRID["semi"], BS_GRID["cropland"], BS_GRID["offset"]))
+    combos = list(itertools.product(BS_GRID["forest"], BS_GRID["semi"], BS_GRID["cropland"]))
     if verbose:
         print(f"BS: перебор {len(combos)} конфигураций на {len(val_ids)} чипах")
 
-    def build(semi, cropland, offset):
-        base = bs_module.BSParams()
-        forest = tuple(max(0.02, v + offset) for v in base.forest)
-        return bs_module.to_params({"forest": forest, "semi": list(semi), "cropland": list(cropland)})
+    def build(forest, semi, cropland):
+        return bs_module.to_params({"forest": list(forest), "semi": list(semi), "cropland": list(cropland)})
 
-    for semi, cropland, offset in combos:
-        params = build(semi, cropland, offset)
+    for forest, semi, cropland in combos:
+        params = build(forest, semi, cropland)
         result = evaluate_bs(dataset, val_ids, params)
         if result["iou_burn"] is None:
             continue
@@ -213,7 +218,7 @@ def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose:
         if objective > best["objective"]:
             best = {
                 "objective": round(float(objective), 5),
-                "params": {"forest": list(params.forest), "semi": list(params.semi), "cropland": list(params.cropland)},
+                "params": {"forest": list(forest), "semi": list(semi), "cropland": list(cropland)},
                 "iou_burn": result["iou_burn"],
                 "miou_sev": result["miou_sev"],
             }
@@ -229,7 +234,7 @@ def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose:
     sar_min_drops = (0.8, 1.2, 1.6)
     if best["params"]:
         th = best["params"]
-        base_params = build(th["semi"], th["cropland"], 0.0)
+        base_params = build(th["forest"], th["semi"], th["cropland"])
         # Валидационная часть мала, поэтому вариант по SAR выбирается по двум фолдам
         # (перекрёстная проверка по событиям пожара): итог — среднее objective.
         folds = [(train_ids, val_ids), (val_ids, train_ids)]

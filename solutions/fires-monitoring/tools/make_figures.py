@@ -184,12 +184,107 @@ def figure_ablations(rows: list[tuple[str, float]], out: Path, title: str = "А�
     return path
 
 
+def figure_pipeline(out: Path) -> Path:
+    """Схема конвейера решения: одна фигура для README, отчёта и презентации."""
+
+    from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+
+    fig, ax = plt.subplots(figsize=(13, 5.2), facecolor=BG)
+    ax.set_facecolor(BG)
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 46)
+    ax.axis("off")
+
+    def box(x, y, w, h, title, lines, color="#1b2430", accent=ACCENT):
+        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.6,rounding_size=1.2",
+                                    linewidth=1.4, edgecolor=accent, facecolor=color))
+        ax.text(x + w / 2, y + h - 2.4, title, color=FG, fontsize=10.5, ha="center", va="top", weight="bold")
+        for i, line in enumerate(lines):
+            ax.text(x + w / 2, y + h - 6.2 - i * 3.4, line, color="#b9c7d6", fontsize=8.6, ha="center", va="top")
+
+    def arrow(x1, y1, x2, y2, label="", dashed=False):
+        ax.add_patch(FancyArrowPatch((x1, y1), (x2, y2), arrowstyle="-|>", mutation_scale=14,
+                                     linewidth=1.5, color="#4fc3ff",
+                                     linestyle="--" if dashed else "-", shrinkA=2, shrinkB=2))
+        if label:
+            ax.text((x1 + x2) / 2, (y1 + y2) / 2 + 1.2, label, color="#8fb6d8", fontsize=8, ha="center")
+
+    box(1, 30, 20, 14, "Данные", ["VIIRS I1–I5 + AUX (AF)", "Sentinel-2 pre/post + SCL,",
+                                  "Sentinel-1 VV/VH (BS)", "раскладка → fires/chips.py"], accent="#7fb2ff")
+    box(1, 5, 20, 14, "Разметка (только train)", ["маски 0/1 (AF), 0–3 (BS)",
+                                                   "разделение по fire_event_id", "315/105 и 168/56 чипов"], accent="#7fb2ff")
+
+    box(26, 30, 21, 14, "AF: активное горение", ["день/ночь по sun_zenith", "абсолютные + контекстный тест (71×71)",
+                                                "вода, техногенные, блик", "бинарная маска горения"], accent="#ffb03a")
+    box(26, 5, 21, 14, "BS: гарь и степень", ["NBR = (B8A − B12), dNBR", "маска SCL по обеим датам",
+                                              "пороги по 4 группам покрова", "Sentinel-1 как подтверждение"], accent="#ff8f4a")
+
+    box(52, 30, 20, 14, "Калибровка (train.py)", ["AF: 108 конфигураций +", "классификатор очагов",
+                                                  "BS: 64 тройки порогов + SAR", "→ weights/weights.json"], accent="#9be37f")
+    box(52, 5, 20, 14, "Оценка (evaluate.py)", ["метрика соревнования", "12 абляций: вклад механизмов",
+                                                "числа → docs/numbers.json"], accent="#9be37f")
+
+    box(77, 30, 22, 14, "Ответ", ["submission.csv (RLE)", "chip_id, class_id, rle",
+                                  "проверка формата и времени", "inference.py, пул процессов", "< 30 с"], accent="#4fc3ff")
+    box(77, 5, 22, 14, "Сервис", ["каталог термоточек и контуров", "REST + GeoJSON/Shapefile + CSV",
+                                  "веб-карта офлайн", "UTM 37N/38N → WGS84"], accent="#4fc3ff")
+
+    arrow(21, 37, 26, 37)
+    arrow(21, 12, 26, 12)
+    arrow(47, 37, 52, 37)
+    arrow(47, 12, 52, 12)
+    arrow(62, 30, 62, 19, dashed=True)
+    arrow(72, 37, 77, 37)
+    arrow(72, 12, 77, 12)
+    arrow(47, 34, 52, 30)
+
+    ax.text(50, 45.2, "Конвейер решения «КосмоФАЙР-2»: два независимых модуля, один формат ответа",
+            color=FG, fontsize=12, ha="center", weight="bold")
+    fig.tight_layout()
+    path = out / "pipeline.png"
+    fig.savefig(path, facecolor=BG, dpi=120)
+    plt.close(fig)
+    return path
+
+
+def _ablation_rows_from_numbers(path: Path) -> list[tuple[str, float]]:
+    """Читает ``docs/numbers.json`` (сбор tools/collect_numbers.py) в список (вариант, Score)."""
+
+    import json
+
+    numbers = json.loads(path.read_text(encoding="utf-8"))
+    rows = [("Итоговая конфигурация", float(numbers["final"]["score"]))]
+    for row in numbers.get("ablations", []):
+        rows.append((str(row["name"]), float(row["score"])))
+    return rows
+
+
+def _parse_ablation_log(path: Path, final_score: float) -> list[tuple[str, float]]:
+    """Разбирает лог ``evaluate.py --ablation`` в список (название варианта, Score)."""
+
+    rows: list[tuple[str, float]] = [("Итоговая конфигурация", float(final_score))]
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "Score=" not in line:
+            continue
+        name, _, rest = line.rpartition("  Score=")
+        try:
+            value = float(rest.split()[0])
+        except (IndexError, ValueError):
+            continue
+        rows.append((name.strip(), value))
+    return rows
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Фигуры для отчёта и презентации")
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--weights", default="weights/weights.json")
     ap.add_argument("--catalog", default="service/catalog.json")
     ap.add_argument("--out", default="docs/figures")
+    ap.add_argument("--ablation-log", default=None,
+                    help="лог evaluate.py --ablation: из него строится фигура с реальными числами")
+    ap.add_argument("--numbers", default=None,
+                    help="docs/numbers.json (tools/collect_numbers.py) — предпочтительный источник абляций")
     args = ap.parse_args(argv)
 
     out = Path(args.out)
@@ -217,13 +312,17 @@ def main(argv: list[str] | None = None) -> int:
     map_path = figure_service_map(Path(args.catalog), out)
     overall = score_from_pairs(af_pairs, bs_pairs)
 
-    rows = [
-        ("Итоговая конфигурация", overall["score"]),
-        ("AF: только правила (без классификатора)", score_from_pairs(
-            {cid: (t, af_module.detect_chip(dataset.load(cid), af_params)) for cid, (t, _) in af_pairs.items()}, bs_pairs)["score"]),
-        ("AF: без пиксельного гейта", overall["score"]),
-    ]
-    figure_ablations(rows, out, title="Пример оформления абляций (полный прогон — evaluate.py --ablation)")
+    print("схема конвейера:", figure_pipeline(out))
+
+    if args.numbers:
+        rows = _ablation_rows_from_numbers(Path(args.numbers))
+        figure_ablations(rows, out, title="Абляции на реальной обучающей части (tools/collect_numbers.py)")
+    elif args.ablation_log:
+        rows = _parse_ablation_log(Path(args.ablation_log), overall["score"])
+        figure_ablations(rows, out, title="Абляции на реальной обучающей части (evaluate.py --ablation)")
+    else:
+        rows = [("Итоговая конфигурация", overall["score"])]
+        figure_ablations(rows, out, title="Абляции: полный прогон — evaluate.py --ablation")
 
     print(json.dumps({
         "detection_png": str(detection_path),
