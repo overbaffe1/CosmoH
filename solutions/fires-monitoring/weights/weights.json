@@ -1,0 +1,76 @@
+{
+  "version": 2,
+  "seed": 20260918,
+  "af_mode": "blobs",
+  "blob_filter": "blob_filter.pkl",
+  "af": {
+    "k_sigma": 2.0,
+    "delta_day": 10.0,
+    "candidate_t4": 310.0,
+    "min_cluster_px": 1
+  },
+  "bs": {
+    "forest": [
+      0.12000000000000001,
+      0.29000000000000004,
+      0.68
+    ],
+    "semi": [
+      0.04,
+      0.12,
+      0.28
+    ],
+    "cropland": [
+      0.05,
+      0.12,
+      0.26
+    ],
+    "sar_recovery": true,
+    "sar_scale": [
+      5.0,
+      2.5
+    ],
+    "sar_min_drop_db": 1.2
+  },
+  "train_metrics": {
+    "af_val_f1": 0.73718,
+    "af_train_f1": null,
+    "af_baseline_f1": 0.70395,
+    "bs_val_iou_burn": 0.96364,
+    "bs_val_miou_sev": 0.79825,
+    "bs_baseline_iou_burn": 0.96371,
+    "bs_baseline_miou_sev": 0.76452,
+    "af_blob_filter_val_f1": 0.95685,
+    "af_blob_filter_features_top": {
+      "mean_i4": 0.013533834586466198,
+      "area_px": 0.006516290726817054,
+      "bbox_fill": 0.0,
+      "max_i4": 0.0,
+      "p90_i4": 0.0,
+      "max_delta": 0.0,
+      "mean_delta": 0.0,
+      "p90_delta": 0.0
+    },
+    "af_chosen_mode": "blobs",
+    "bs_sar_selection": {
+      "sar_recovery": true,
+      "sar_scale": [
+        5.0,
+        2.5
+      ],
+      "sar_min_drop_db": 1.2,
+      "iou_burn": 0.96385,
+      "miou_sev": 0.86399,
+      "fold_scores": [
+        0.59654,
+        0.61926
+      ]
+    }
+  },
+  "split": {
+    "af_train": 92,
+    "af_val": 28,
+    "bs_train": 49,
+    "bs_val": 11
+  }
+}
