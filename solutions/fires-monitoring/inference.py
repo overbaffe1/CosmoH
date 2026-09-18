@@ -43,7 +43,7 @@ from fires.weights import load_weights
 _WORKER: dict = {}
 
 
-def _load_solution(weights_path: Path | None):
+def _load_solution(weights_path: Path | None, device: str | None = None):
     weights = load_weights(weights_path)
     af_params = af_module.to_params(weights.get("af", {}))
     bs_params = bs_module.to_params(weights.get("bs", {}))
@@ -60,6 +60,10 @@ def _load_solution(weights_path: Path | None):
         path = base / weights["severity_model"]
         try:
             severity_model = SeverityModel.load(path)
+            if device:
+                from fires.severity import resolve_device
+
+                severity_model.device = resolve_device(device)
         except Exception as exc:
             # Файл модели мог быть собран другой версией scikit-learn: без него решение
             # продолжает работать на порогах dNBR, а не падает с ошибкой.
@@ -68,10 +72,11 @@ def _load_solution(weights_path: Path | None):
     return af_params, bs_params, blob_filter, severity_model
 
 
-def _init_worker(data_dir: str, weights_path: str | None) -> None:
+def _init_worker(data_dir: str, weights_path: str | None, device: str | None = None) -> None:
     """Инициализация воркера: датасет и пороги читаются один раз на процесс."""
 
-    af_params, bs_params, blob_filter, severity_model = _load_solution(Path(weights_path) if weights_path else None)
+    af_params, bs_params, blob_filter, severity_model = _load_solution(
+        Path(weights_path) if weights_path else None, device)
     _WORKER.update(
         dataset=Dataset(Path(data_dir)),
         af_params=af_params,
@@ -133,9 +138,10 @@ def process(
     limit: int | None = None,
     verbose: bool = True,
     jobs: int = 0,
+    device: str | None = None,
 ) -> dict:
     t0 = time.perf_counter()
-    af_params, bs_params, blob_filter, severity_model = _load_solution(weights_path)
+    af_params, bs_params, blob_filter, severity_model = _load_solution(weights_path, device)
 
     dataset = Dataset(data_dir)
     template_path = data_dir / "sample_submission.csv"
@@ -166,7 +172,7 @@ def process(
                 max_workers=n_jobs,
                 mp_context=ctx,
                 initializer=_init_worker,
-                initargs=(str(data_dir), str(weights_path) if weights_path else None),
+                initargs=(str(data_dir), str(weights_path) if weights_path else None, device),
             ) as pool:
                 results = list(pool.map(_process_chip, template_ids, chunksize=1))
             used_jobs = n_jobs
@@ -175,7 +181,7 @@ def process(
                 print(f"[warn] параллельная обработка недоступна ({exc}), перехожу к последовательной", file=sys.stderr)
             results = []
     if not results:
-        _init_worker(str(data_dir), str(weights_path) if weights_path else None)
+        _init_worker(str(data_dir), str(weights_path) if weights_path else None, device)
         # пороги и модель берём из уже загруженного решения, чтобы не читать файлы дважды
         _WORKER["af_params"], _WORKER["bs_params"] = af_params, bs_params
         _WORKER["blob_filter"], _WORKER["severity_model"] = blob_filter, severity_model
@@ -241,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="обработать только первые N чипов (отладка)")
     ap.add_argument("--jobs", type=int, default=0, help="число процессов (0 — авто: ядра, не больше восьми)")
     ap.add_argument("--validate", action="store_true", help="проверить результат по шаблону и границам чипов")
+    ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default=None,
+                    help="где считать модель степени поражения (по умолчанию — как обучена)")
     args = ap.parse_args(argv)
 
     report = process(
@@ -249,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.weights) if args.weights else None,
         limit=args.limit,
         jobs=args.jobs,
+        device=args.device,
     )
 
     if args.validate:

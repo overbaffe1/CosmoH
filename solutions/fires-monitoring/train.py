@@ -28,6 +28,7 @@ from fires import af as af_module
 from fires import bs as bs_module
 from fires.chips import Dataset
 from fires.metrics import score_from_pairs
+from fires.severity import gpu_report, resolve_device
 from fires.weights import save_weights
 
 SEED = 20260918
@@ -208,7 +209,8 @@ def args_seed() -> int:
     return SEED
 
 
-def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose: bool = True) -> dict:
+def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose: bool = True,
+            device: str = "auto", backend: str = "auto", features: str = "base") -> dict:
     """Поиск порогов dNBR по группам покрова (максимизируем 0.35*IoU_burn + 0.30*mIoU_sev)."""
 
     import itertools
@@ -324,17 +326,18 @@ def tune_bs(dataset: Dataset, train_ids: list[str], val_ids: list[str], verbose:
         # Порог — одно число на группу покрова, а решение о степени зависит и от запаса биомассы,
         # и от сезона, и от текстуры пятна. Модель на градиентном бустинге учитывает всё сразу;
         # она принимается, только если выигрывает у порогов на том же отложенном наборе.
-        model = _train_severity_model(dataset, train_ids, verbose=verbose)
+        model = _train_severity_model(dataset, train_ids, verbose=verbose, device=device,
+                                      backend=backend, features=features)
         if model is not None:
             model_result = evaluate_bs(dataset, val_ids, train_params, severity_model=model)
             model_objective = 0.35 * model_result["iou_burn"] + 0.30 * model_result["miou_sev"]
             threshold_objective = 0.35 * best["iou_burn"] + 0.30 * best["miou_sev"]
-            model.metrics = {
+            model.metrics.update({
                 "val_iou_burn": model_result["iou_burn"],
                 "val_miou_sev": model_result["miou_sev"],
                 "val_objective": round(float(model_objective), 5),
                 "thresholds_objective": round(float(threshold_objective), 5),
-            }
+            })
             if verbose:
                 print(
                     f"  модель степени поражения: IoU_burn={model_result['iou_burn']:.4f} "
@@ -411,58 +414,37 @@ def select_model_postprocess(dataset: Dataset, val_ids: list[str], params, model
     return best
 
 
-def _train_severity_model(dataset: Dataset, train_ids: list[str], verbose: bool = True):
+def _train_severity_model(dataset: Dataset, train_ids: list[str], verbose: bool = True,
+                          device: str = "auto", backend: str = "auto", features: str = "base"):
     """Обучает модель степени поражения на подвыборке пикселей обучающих чипов.
 
     Пиксели берутся разреженно (по ``SEVERITY_TRAIN_PIXELS`` с чипа), потому что количество
     положительных пикселей на чипах различается на порядки; веса классов выравниваются, чтобы
     редкие классы 2 и 3 не «растворились» в фоне.
+
+    ``device`` — ``auto``/``cpu``/``cuda``: на GPU обучение идёт через xgboost (sklearn CUDA не
+    умеет), на CPU — через HistGradientBoostingClassifier. ``features`` — ``base`` (23 признака)
+    или ``ext`` (расширенный набор из :mod:`fires.severity`).
     """
 
     try:
-        from fires.severity import SeverityModel, chip_features
-        from sklearn.ensemble import HistGradientBoostingClassifier
-    except Exception as exc:  # sklearn нет или модуль недоступен — остаёмся на порогах
+        from fires.severity import collect_training_pixels, train_model
+    except Exception as exc:  # sklearn/xgboost нет или модуль недоступен — остаёмся на порогах
         if verbose:
             print(f"  модель степени поражения недоступна ({exc}) — остаются пороги")
         return None
 
-    rng = np.random.default_rng(SEED)
-    features, labels = [], []
-    for chip_id in train_ids:
-        chip = dataset.load(chip_id)
-        if chip.mask_sev is None:
-            continue
-        matrix, ok = chip_features(chip)
-        truth = np.asarray(chip.mask_sev, dtype=np.uint8).reshape(-1)
-        indices = np.flatnonzero(ok)
-        if indices.size > SEVERITY_TRAIN_PIXELS:
-            indices = rng.choice(indices, size=SEVERITY_TRAIN_PIXELS, replace=False)
-        features.append(matrix[indices])
-        labels.append(truth[indices])
-    if not features:
-        return None
-    X = np.concatenate(features)
-    y = np.concatenate(labels)
-    counts = np.bincount(y, minlength=4).astype(float)
-    weights = 1.0 / np.sqrt(np.maximum(counts, 1))
-    sample_weight = weights[y]
-    sample_weight *= len(sample_weight) / sample_weight.sum()
-
-    estimator = HistGradientBoostingClassifier(
-        max_iter=SEVERITY_ITERATIONS,
-        learning_rate=SEVERITY_LEARNING_RATE,
-        max_leaf_nodes=SEVERITY_LEAVES,
-        min_samples_leaf=SEVERITY_MIN_SAMPLES_LEAF,
-        l2_regularization=1.0,
-        random_state=SEED,
-        early_stopping=False,
-    )
-    estimator.fit(X, y, sample_weight=sample_weight)
-    if verbose:
-        print(f"  модель степени поражения обучена на {X.shape[0]} пикселях "
-              f"({X.shape[1]} признаков, классы {dict(zip(*np.unique(y, return_counts=True)))})")
-    return SeverityModel(estimator=estimator, kind="classifier")
+    X, y = collect_training_pixels(dataset, train_ids, SEVERITY_TRAIN_PIXELS, features,
+                                   seed=SEED, verbose=verbose)
+    params = {
+        "iterations": SEVERITY_ITERATIONS,
+        "learning_rate": SEVERITY_LEARNING_RATE,
+        "leaves": SEVERITY_LEAVES,
+        "min_samples_leaf": SEVERITY_MIN_SAMPLES_LEAF,
+        "l2": 1.0,
+    }
+    return train_model(X, y, params=params, backend=backend, device=device,
+                       feature_names=features, seed=SEED, verbose=verbose)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -472,6 +454,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--val-frac", type=float, default=0.25)
     ap.add_argument("--seed", type=int, default=SEED)
     ap.add_argument("--fast", action="store_true", help="уменьшенные сетки поиска (для тестов и черновых прогонов)")
+    ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
+                    help="где обучать модель степени поражения: auto — GPU (xgboost), если он есть")
+    ap.add_argument("--backend", choices=("auto", "sklearn", "xgboost"), default="auto",
+                    help="auto: xgboost на GPU, sklearn на CPU")
+    ap.add_argument("--features", choices=("base", "ext"), default="base",
+                    help="base — 23 признака (как в первой версии модели), ext — расширенный набор")
     args = ap.parse_args(argv)
     if args.fast:
         AF_GRID.update({k: v[:2] for k, v in AF_GRID.items()})
@@ -491,7 +479,11 @@ def main(argv: list[str] | None = None) -> int:
     print("=== Модуль картирования гарей (BS) ===")
     baseline_bs = evaluate_bs(dataset, bs_val, bs_module.BSParams())
     print(f"baseline: IoU_burn={baseline_bs['iou_burn']} mIoU_sev={baseline_bs['miou_sev']} на {baseline_bs['n']} чипах")
-    best_bs = tune_bs(dataset, bs_train, bs_val)
+    device = resolve_device(args.device)
+    if args.device == "cuda" and device != "cuda":
+        print(f"=== GPU недоступен ({gpu_report()['reason']}) — обучение на CPU ===")
+    best_bs = tune_bs(dataset, bs_train, bs_val, device=device, backend=args.backend,
+                      features=args.features)
 
     model_path = None
     if af_result["mode"] == "blobs" and blob_result.get("model") is not None:

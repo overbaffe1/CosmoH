@@ -1,30 +1,38 @@
 """Обучаемая модель степени поражения гари (классы 0–3) — второй режим модуля BS.
 
 Зачем она нужна. Пороги dNBR — это то, как построен эталон организаторов, и на реальных данных они
-работают: единая шкала USGS проигрывает подобранным по покрову порогам сразу 0.12 Score. Но порог —
-это одно число на группу покрова, а решение о степени поражения зависит от многих факторов: запаса
-биомассы (NDVI до пожара), сезона (что видно по состоянию пашни), влажности (NDMI, B11), текстуры
-пятна (огонь выжигает пятном, а фенология даёт россыпь), радиолокационного отклика (ΔVH не зависит
-от облачности). Модель на градиентном бустинге учитывает всё это сразу.
+работают: единая шкала USGS проигрывает подобранным по покрову порогам сразу 0.12 Score. Но порог — это
+одно число на группу покрова, а решение о степени поражения зависит от многих факторов: запаса биомассы
+(NDVI до пожара), сезона (что видно по состоянию пашни), влажности (NDMI, B11/B12), текстуры пятна
+(огонь выжигает пятном, а фенология даёт россыпь), радиолокационного отклика (ΔVH не зависит от
+облачности). Модель на градиентном бустинге учитывает всё это сразу.
 
 Как устроено:
 
-* признаки считаются по тем же формулам, что и в :mod:`fires.bs` (NBR, dNBR, rdNBR, NDVI, NDMI,
-  каналы до/после, тип покрова, DEM, VV/VH и их разности, а также контекст dNBR в окне 15×15);
-* обучение — :class:`sklearn.ensemble.HistGradientBoostingClassifier` на подвыборке пикселей
-  обучающих чипов (веса классов уравниваются, потому что гарь занимает ~6 % пикселей);
-* предсказание — только внутри области интереса: пиксели, где dNBR даже близко не поднялся
-  к порогу горения, заведомо «не горели», модель им не нужна (ROI-гейт ускоряет инференс в ~2 раза
-  и на валидации ничего не ухудшает);
+* признаки считаются по тем же формулам, что и в :mod:`fires.bs` (NBR, dNBR, rdNBR, NDVI, NDMI, каналы
+  до/после, тип покрова, DEM, VV/VH и их разности, а также контекст dNBR в окне 15×15) — базовый набор
+  :data:`FEATURE_NAMES_BASE` из 23 столбцов; расширенный :data:`FEATURE_NAMES_EXT` добавляет каналы
+  видимого диапазона, индексы влажности, рельеф, локальную текстуру dNBR и сезон;
+* обучение — бустинг по гистограммам: :class:`sklearn.ensemble.HistGradientBoostingClassifier` на CPU
+  либо :class:`xgboost.XGBClassifier` (``device="cuda"``) на GPU, если он есть; оба варианта
+  складываются в один и тот же объект :class:`SeverityModel`;
+* предсказание — только внутри области интереса: пиксели, где dNBR даже близко не поднялся к порогу
+  горения, заведомо «не горели», модель им не нужна (ROI-гейт ускоряет инференс в ~2 раза и на
+  валидации ничего не ухудшает);
+* при желании к вероятностям классов добавляются смещения (``class_bias``): это позволяет подтянуть
+  слабый класс 1 (низкая степень), не переобучая модель;
+* несколько моделей можно объединить в ансамбль (``members``) — предсказания усредняются по
+  вероятностям;
 * режим выбирается на отложенной части по событиям пожара: если модель не выигрывает у порогов,
   ``train.py`` оставляет пороги (``bs_mode: thresholds``).
 
-Файл модели (``weights/severity_model.pkl``) — это обычный pickle с оценщиком и метаданными;
-он собирается из кода в репозитории, никаких внешних загрузок в инференсе не происходит.
+Файл модели (``weights/severity_model.pkl``) — это обычный pickle с оценщиком и метаданными; он
+собирается из кода в репозитории, никаких внешних загрузок в инференсе не происходит.
 """
 
 from __future__ import annotations
 
+import os
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,13 +42,33 @@ from scipy import ndimage
 
 from fires import bs as bs_module
 
-#: Имена признаков (порядок фиксирован — он же порядок столбцов матрицы).
-FEATURE_NAMES: tuple[str, ...] = (
+#: Базовые имена признаков (порядок фиксирован — он же порядок столбцов матрицы).
+FEATURE_NAMES_BASE: tuple[str, ...] = (
     "dnbr", "rdnbr", "nbr_pre", "nbr_post", "ndvi_pre", "ndvi_post", "dndvi",
     "ndmi_pre", "ndmi_post", "b12_post", "b11_post", "b8a_pre", "b8a_post",
     "landcover", "dem", "vh_pre", "vh_post", "dvh", "vv_pre", "vv_post", "dvv",
     "dnbr_ctx15", "dnbr_max15",
 )
+
+#: Расширенный набор: то же плюс каналы видимого/красного края, влажность, рельеф, текстура и сезон.
+#: Смысл добавки: 65–68 % ошибок контура приходится на пашню, а пашня отличается от гари не глубиной
+#: dNBR, а сопутствующим состоянием поверхности (влажность B11/B12, зелёность B3/B4/B5/B7, рельеф
+#: ровный) и сезоном — этих осей у базового набора не было.
+FEATURE_NAMES_EXT: tuple[str, ...] = FEATURE_NAMES_BASE + (
+    "b3_pre", "b3_post", "b4_pre", "b4_post", "b2_post", "b5_post", "b7_post",
+    "ndwi_pre", "ndwi_post", "dndmi", "b12_b11_post",
+    "dem_slope", "dem_rel", "dnbr_std15", "dnbr_contrast",
+    "doy", "doy_cos",
+)
+
+#: Наборы признаков по имени (используются в ``train.py`` и ``tools/train_loop.py``).
+FEATURE_SETS: dict[str, tuple[str, ...]] = {
+    "base": FEATURE_NAMES_BASE,
+    "ext": FEATURE_NAMES_EXT,
+}
+
+#: Имена признаков по умолчанию — базовый набор (обратная совместимость с первой версией модели).
+FEATURE_NAMES: tuple[str, ...] = FEATURE_NAMES_BASE
 
 #: Порог dNBR, при котором пиксель попадает в область интереса.
 ROI_CUT = 0.05
@@ -51,6 +79,12 @@ CONTEXT_SIZE = 15
 #: пикселей (0.55 против 0.34 от чипа) при том же качестве — дыры внутри контура всё равно
 #: заполняет морфология.
 ROI_SIZE = 0
+
+#: Доступные устройства и бэкенды обучения.
+DEVICE_CHOICES = ("auto", "cpu", "cuda")
+BACKEND_CHOICES = ("auto", "sklearn", "xgboost")
+
+_DEVICE_CACHE: dict[str, str] = {}
 
 
 def _decibels(arr: np.ndarray | None, shape: tuple[int, int]) -> np.ndarray:
@@ -65,8 +99,210 @@ def _decibels(arr: np.ndarray | None, shape: tuple[int, int]) -> np.ndarray:
     return np.nan_to_num(data, nan=0.0)
 
 
-def chip_features(chip) -> tuple[np.ndarray, np.ndarray]:
-    """Считает матрицу признаков ``(H*W, F)`` и маску валидных пикселей для одного BS-чипа."""
+# ---------------------------------------------------------------- устройства и бэкенды
+
+def gpu_report() -> dict:
+    """Что известно про GPU: версия xgboost, собран ли он с CUDA и работает ли она здесь.
+
+    Проверка «работает» — не только флаг сборки: ``xgboost`` может быть собран с CUDA, но не найти
+    подходящий ``libcudart`` (типичная ситуация на чужой машине). Поэтому один раз выполняется
+    микрообучение на одну итерацию, результат кэшируется.
+    """
+
+    info: dict = {"xgboost": None, "build_use_cuda": False, "runtime_ok": False, "reason": ""}
+    try:
+        import xgboost as xgb  # noqa: F401  (нужен только факт наличия)
+    except Exception as exc:
+        info["reason"] = f"xgboost не установлен ({exc.__class__.__name__})"
+        return info
+    info["xgboost"] = getattr(xgb, "__version__", "?")
+    try:
+        info["build_use_cuda"] = bool(xgb.build_info().get("USE_CUDA", False))
+    except Exception:
+        info["build_use_cuda"] = False
+    if not info["build_use_cuda"]:
+        info["reason"] = "сборка xgboost без CUDA (pip install xgboost — вил с поддержкой CUDA)"
+        return info
+    if "runtime" in _DEVICE_CACHE:
+        info["runtime_ok"] = _DEVICE_CACHE["runtime"] == "cuda"
+        info["reason"] = "" if info["runtime_ok"] else _DEVICE_CACHE.get("reason", "GPU недоступен")
+        return info
+    # Тонкость: xgboost не падает, если GPU не найден, а молча продолжает на CPU. Поэтому
+    # после пробного обучения смотрим на устройство, которое реально записано в конфиг бустера.
+    try:
+        import contextlib
+        import io
+        import re
+
+        rng = np.random.default_rng(0)
+        x = rng.random((64, 3), dtype=np.float32)
+        y = (x[:, 0] > 0.5).astype(np.int32)
+        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda", verbosity=0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            probe.fit(x, y)
+        config = probe.get_booster().save_config()
+        used = re.search(r'"device"\s*:\s*"([a-z]+)"', config)
+        info["runtime_ok"] = bool(used) and used.group(1) == "cuda"
+        reason = "" if info["runtime_ok"] else (
+            "xgboost не нашёл CUDA-устройство (проверьте драйвер NVIDIA и CUDA-рантайм: "
+            "py -3 -m pip install nvidia-cuda-runtime-cu12)")
+    except Exception as exc:
+        info["runtime_ok"] = False
+        reason = f"пробный запуск на GPU не удался: {type(exc).__name__}"
+    _DEVICE_CACHE["runtime"] = "cuda" if info["runtime_ok"] else "cpu"
+    _DEVICE_CACHE["reason"] = reason
+    info["reason"] = reason
+    return info
+
+
+def resolve_device(spec: str = "auto") -> str:
+    """Превращает ``auto|cpu|cuda`` в конкретное устройство, молча откатываясь на CPU."""
+
+    spec = (spec or "auto").lower()
+    if spec in ("gpu", "cuda"):
+        spec = "cuda"
+    if spec == "cpu":
+        return "cpu"
+    if spec == "auto" and os.environ.get("COSMOH_DEVICE"):
+        spec = os.environ["COSMOH_DEVICE"].lower()
+    if spec == "cuda":
+        return "cuda" if gpu_report()["runtime_ok"] else "cpu"
+    if spec == "auto":
+        return "cuda" if gpu_report()["runtime_ok"] else "cpu"
+    raise ValueError(f"неизвестное устройство: {spec!r}")
+
+
+def pick_backend(device: str, backend: str = "auto") -> str:
+    """Бэкенд обучения: на GPU — xgboost (sklearn GPU не умеет), на CPU — тоже xgboost, если просили."""
+
+    backend = (backend or "auto").lower()
+    if backend not in BACKEND_CHOICES:
+        raise ValueError(f"неизвестный бэкенд: {backend!r}")
+    if backend == "auto":
+        return "xgboost" if device == "cuda" else "sklearn"
+    if backend == "xgboost" and device == "cuda" and not gpu_report()["runtime_ok"]:
+        return "sklearn"
+    return backend
+
+
+def make_estimator(backend: str, device: str, params: dict, seed: int):
+    """Создаёт оценщик нужного бэкенда с похожими гиперпараметрами.
+
+    ``params`` — общий словарь (``iterations``, ``learning_rate``, ``leaves``, ``min_samples_leaf``,
+    ``l2``, ``subsample``, ``colsample``); для xgboost он переводится в его собственные имена.
+    """
+
+    iterations = int(params.get("iterations", 60))
+    lr = float(params.get("learning_rate", 0.2))
+    leaves = int(params.get("leaves", 24))
+    min_leaf = int(params.get("min_samples_leaf", 80))
+    l2 = float(params.get("l2", 1.0))
+    kind = str(params.get("kind", "classifier"))
+    if backend == "xgboost":
+        import xgboost as xgb
+
+        if kind == "regressor":
+            return xgb.XGBRegressor(
+                n_estimators=iterations,
+                learning_rate=lr,
+                max_depth=int(params.get("max_depth", 0)) or max(3, int(np.log2(max(leaves, 2)))),
+                max_leaves=leaves,
+                grow_policy="lossguide",
+                min_child_weight=float(params.get("min_child_weight", max(1.0, min_leaf / 20.0))),
+                reg_lambda=l2,
+                subsample=float(params.get("subsample", 0.8)),
+                colsample_bytree=float(params.get("colsample", 0.9)),
+                tree_method="hist",
+                device=device,
+                objective="reg:squarederror",
+                n_jobs=int(params.get("n_jobs", 0)) or os.cpu_count() or 4,
+                random_state=seed,
+                verbosity=0,
+            )
+
+        return xgb.XGBClassifier(
+            n_estimators=iterations,
+            learning_rate=lr,
+            max_depth=int(params.get("max_depth", 0)) or max(3, int(np.log2(max(leaves, 2)))),
+            max_leaves=leaves,
+            grow_policy="lossguide",
+            min_child_weight=float(params.get("min_child_weight", max(1.0, min_leaf / 20.0))),
+            reg_lambda=l2,
+            subsample=float(params.get("subsample", 0.8)),
+            colsample_bytree=float(params.get("colsample", 0.9)),
+            tree_method="hist",
+            device=device,
+            objective="multi:softprob",
+            num_class=4,
+            n_jobs=int(params.get("n_jobs", 0)) or os.cpu_count() or 4,
+            random_state=seed,
+            verbosity=0,
+        )
+    if kind == "regressor":
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
+        return HistGradientBoostingRegressor(
+            max_iter=iterations,
+            learning_rate=lr,
+            max_leaf_nodes=leaves,
+            min_samples_leaf=min_leaf,
+            l2_regularization=l2,
+            random_state=seed,
+            early_stopping=False,
+        )
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    return HistGradientBoostingClassifier(
+        max_iter=iterations,
+        learning_rate=lr,
+        max_leaf_nodes=leaves,
+        min_samples_leaf=min_leaf,
+        l2_regularization=l2,
+        random_state=seed,
+        early_stopping=False,
+    )
+
+
+def set_predict_device(estimator, device: str) -> None:
+    """Переключает устройство предсказания у xgboost-модели (у sklearn устройства нет)."""
+
+    if type(estimator).__module__.startswith("xgboost"):
+        try:
+            estimator.get_booster().set_param({"device": device})
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------- признаки
+
+def feature_names_for(spec: str | tuple[str, ...]) -> tuple[str, ...]:
+    """``"base"``/``"ext"`` (или готовый кортеж имён) → кортеж имён признаков."""
+
+    if isinstance(spec, str):
+        if spec not in FEATURE_SETS:
+            raise ValueError(f"неизвестный набор признаков: {spec!r} (есть {sorted(FEATURE_SETS)})")
+        return FEATURE_SETS[spec]
+    return tuple(spec)
+
+
+def _day_of_year(chip) -> float:
+    """День года по метаданным чипа (0, если даты нет)."""
+
+    for key in ("acq_datetime", "datetime", "date", "date_pre", "acq_time"):
+        value = str(chip.meta.get(key, "") or "")
+        if len(value) >= 10 and value[4] == "-" and value[7] == "-":
+            try:
+                import datetime as _dt
+
+                date = _dt.date(int(value[0:4]), int(value[5:7]), int(value[8:10]))
+                return float(date.timetuple().tm_yday)
+            except Exception:
+                continue
+    return 0.0
+
+
+def _feature_dict(chip) -> dict[str, np.ndarray]:
+    """Считает все признаки чипа (словарь имя → массив ``H×W``)."""
 
     pre, post = chip.pre, chip.post
     scale = bs_module.scale_reflectance
@@ -79,6 +315,12 @@ def chip_features(chip) -> tuple[np.ndarray, np.ndarray]:
         a, b = scale(a), scale(b)
         return (a - b) / (a + b + 1e-6)
 
+    def band(date: str, name: str) -> np.ndarray:
+        stack = pre if date == "pre" else post
+        if name not in stack:
+            return np.zeros(np.asarray(nbr_pre).shape, dtype=np.float32)
+        return scale(stack[name])
+
     ndvi_pre = index(pre["B8A"], pre["B4"])
     ndvi_post = index(post["B8A"], post["B4"])
     landcover = chip.layers.get("landcover")
@@ -87,6 +329,7 @@ def chip_features(chip) -> tuple[np.ndarray, np.ndarray]:
     dem = chip.layers.get("DEM")
     if dem is None:
         dem = np.zeros(dnbr.shape, dtype=np.float32)
+    dem = np.asarray(dem, dtype=np.float32)
 
     vh_pre = _decibels(chip.s1_pre.get("VH"), dnbr.shape)
     vh_post = _decibels(chip.s1_post.get("VH"), dnbr.shape)
@@ -96,27 +339,63 @@ def chip_features(chip) -> tuple[np.ndarray, np.ndarray]:
     finite_dnbr = np.nan_to_num(dnbr, nan=0.0)
     ctx = ndimage.uniform_filter(finite_dnbr, size=CONTEXT_SIZE)
     ctx_max = ndimage.maximum_filter(np.nan_to_num(dnbr, nan=-1.0), size=CONTEXT_SIZE)
+    ctx_sq = ndimage.uniform_filter(finite_dnbr ** 2, size=CONTEXT_SIZE)
+    dnbr_std = np.sqrt(np.clip(ctx_sq - ctx ** 2, 0.0, None))
 
-    ok = np.ones(dnbr.shape, dtype=bool)
-    ok &= np.asarray(landcover) != bs_module.LC_WATER
+    ndwi_pre = index(pre["B3"], pre["B8A"]) if "B3" in pre else np.zeros(dnbr.shape, dtype=np.float32)
+    ndwi_post = index(post["B3"], post["B8A"]) if "B3" in post else np.zeros(dnbr.shape, dtype=np.float32)
+    ndmi_pre = index(pre["B8A"], pre["B11"])
+    ndmi_post = index(post["B8A"], post["B11"])
+    b12_post = band("post", "B12")
+    b11_post = band("post", "B11")
+    doy = _day_of_year(chip)
+
+    return {
+        "dnbr": dnbr, "rdnbr": rd, "nbr_pre": nbr_pre, "nbr_post": nbr_post,
+        "ndvi_pre": ndvi_pre, "ndvi_post": ndvi_post, "dndvi": ndvi_post - ndvi_pre,
+        "ndmi_pre": ndmi_pre, "ndmi_post": ndmi_post,
+        "b12_post": b12_post, "b11_post": b11_post,
+        "b8a_pre": scale(pre["B8A"]), "b8a_post": scale(post["B8A"]),
+        "landcover": np.asarray(landcover, dtype=np.float32), "dem": dem,
+        "vh_pre": vh_pre, "vh_post": vh_post, "dvh": vh_post - vh_pre,
+        "vv_pre": vv_pre, "vv_post": vv_post, "dvv": vv_post - vv_pre,
+        "dnbr_ctx15": ctx, "dnbr_max15": ctx_max,
+        # расширенный набор
+        "b3_pre": band("pre", "B3"), "b3_post": band("post", "B3"),
+        "b4_pre": band("pre", "B4"), "b4_post": band("post", "B4"),
+        "b2_post": band("post", "B2"), "b5_post": band("post", "B5"),
+        "b7_post": band("post", "B7"),
+        "ndwi_pre": ndwi_pre, "ndwi_post": ndwi_post, "dndmi": ndmi_post - ndmi_pre,
+        "b12_b11_post": b12_post / (np.abs(b11_post) + 1e-6),
+        "dem_slope": np.hypot(*np.gradient(dem)),
+        "dem_rel": dem - float(np.median(dem)),
+        "dnbr_std15": dnbr_std, "dnbr_contrast": finite_dnbr - ctx,
+        "doy": np.full(dnbr.shape, doy, dtype=np.float32),
+        "doy_cos": np.full(dnbr.shape, float(np.cos(2 * np.pi * doy / 365.0)) if doy else 0.0,
+                           dtype=np.float32),
+    }
+
+
+def chip_features(chip, feature_names: str | tuple[str, ...] | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Считает матрицу признаков ``(H*W, F)`` и маску валидных пикселей для одного BS-чипа.
+
+    ``feature_names`` — имя набора (``"base"``/``"ext"``) или готовый кортеж имён; по умолчанию
+    базовый набор из :data:`FEATURE_NAMES_BASE`. Порядок столбцов всегда соответствует этому кортежу.
+    """
+
+    names = feature_names_for(feature_names or FEATURE_NAMES)
+    values = _feature_dict(chip)
+    matrix = np.stack([np.asarray(values[name], dtype=np.float32) for name in names], axis=-1)
+
+    ok = np.ones(matrix.shape[:2], dtype=bool)
+    ok &= np.asarray(values["landcover"]) != bs_module.LC_WATER
     for key in ("SCL", "SCL_pre"):
         scl = chip.layers.get(key)
         if scl is not None:
             scl = np.asarray(scl)
             ok &= ~np.isin(scl, bs_module.SCL_BAD)
             ok &= scl != bs_module.SCL_WATER
-    ok &= (scale(pre["B8A"]) != 0) | (scale(post["B8A"]) != 0)
-
-    stack = [
-        dnbr, rd, nbr_pre, nbr_post, ndvi_pre, ndvi_post, ndvi_post - ndvi_pre,
-        index(pre["B8A"], pre["B11"]), index(post["B8A"], post["B11"]),
-        scale(post["B12"]), scale(post["B11"]), scale(pre["B8A"]), scale(post["B8A"]),
-        np.asarray(landcover, dtype=np.float32), np.asarray(dem, dtype=np.float32),
-        vh_pre, vh_post, vh_post - vh_pre, vv_pre, vv_post, vv_post - vv_pre,
-        ctx, ctx_max,
-    ]
-    matrix = np.stack([np.asarray(f, dtype=np.float32) for f in stack], axis=-1)
-    assert matrix.shape[-1] == len(FEATURE_NAMES), "число признаков разошлось с FEATURE_NAMES"
+    ok &= (values["b8a_pre"] != 0) | (values["b8a_post"] != 0)
     return matrix.reshape(-1, matrix.shape[-1]), ok.reshape(-1)
 
 
@@ -137,6 +416,8 @@ def roi_mask(chip, cut: float = ROI_CUT, size: int = ROI_SIZE) -> np.ndarray:
     return ndimage.maximum_filter(hot, size=size) if size else hot
 
 
+# ---------------------------------------------------------------- модель
+
 @dataclass
 class SeverityModel:
     """Обёртка над оценщиком: предсказание степени поражения для чипа.
@@ -145,15 +426,54 @@ class SeverityModel:
     :param kind: ``"classifier"`` (многоклассовый 0–3) или ``"regressor"`` (непрерывная степень,
         переводится в классы порогами 0.5/1.5/2.5);
     :param cuts: пороги перевода регрессии в классы;
-    :param metrics: метрики, полученные на отложенной части (для отчёта).
+    :param metrics: метрики, полученные на отложенной части (для отчёта);
+    :param feature_names: в каком порядке и составе считать признаки чипа;
+    :param backend: ``"sklearn"`` или ``"xgboost"`` (нужно для отчёта и для переключения устройства);
+    :param device: где модель обучалась и где предсказывает (``"cpu"``/``"cuda"``);
+    :param class_bias: смещения вероятностей классов перед ``argmax`` (подтягивают слабые классы);
+    :param members: список оценщиков ансамбля — вероятности усредняются.
     """
 
-    estimator: object
+    estimator: object = None
     kind: str = "classifier"
     cuts: tuple[float, float, float] = (0.5, 1.5, 2.5)
     roi_cut: float = ROI_CUT
     roi_size: int = ROI_SIZE
     metrics: dict = field(default_factory=dict)
+    feature_names: tuple[str, ...] = FEATURE_NAMES_BASE
+    backend: str = "sklearn"
+    device: str = "cpu"
+    class_bias: tuple[float, float, float, float] | None = None
+    members: list = field(default_factory=list)
+
+    # --- предсказание
+
+    def _estimators(self) -> list:
+        return list(self.members) if self.members else [self.estimator]
+
+    def proba_matrix(self, matrix: np.ndarray) -> np.ndarray:
+        """Вероятности классов 0–3 для строк матрицы признаков (усредняются по ансамблю)."""
+
+        estimators = [e for e in self._estimators() if e is not None]
+        if not estimators:
+            raise ValueError("в модели нет ни одного оценщика")
+        total = None
+        for estimator in estimators:
+            if self.backend != "regressor":
+                set_predict_device(estimator, resolve_device(self.device))
+            part = np.asarray(estimator.predict_proba(matrix) if hasattr(estimator, "predict_proba")
+                              else estimator.predict(matrix), dtype=np.float32)
+            if part.ndim == 2 and part.shape[1] != 4:
+                # Модель, обученная не на всех четырёх классах (бывает на синтетике и на
+                # маленьких подвыборках), должна давать полный вектор вероятностей.
+                full = np.zeros((part.shape[0], 4), dtype=np.float32)
+                classes = np.asarray(getattr(estimator, "classes_", np.arange(part.shape[1])), dtype=int)
+                for column, cls in enumerate(classes):
+                    if 0 <= int(cls) < 4 and column < part.shape[1]:
+                        full[:, int(cls)] = part[:, column]
+                part = full
+            total = part if total is None else total + part
+        return total / len(estimators)
 
     def _classes(self, raw: np.ndarray) -> np.ndarray:
         if self.kind == "regressor":
@@ -163,16 +483,18 @@ class SeverityModel:
             return out
         return raw.astype(np.uint8)
 
+    def _classes_from_proba(self, proba: np.ndarray) -> np.ndarray:
+        if self.class_bias is not None:
+            proba = proba + np.asarray(self.class_bias, dtype=np.float32)
+        return np.argmax(proba, axis=1).astype(np.uint8)
+
     def predict_chip(self, chip) -> np.ndarray:
         """Степень поражения 0–3 для чипа (пиксели вне области интереса — 0)."""
 
-        matrix, ok = chip_features(chip)
+        matrix, ok = chip_features(chip, self.feature_names)
         shape = np.asarray(chip.pre["B8A"]).shape
         hot = roi_mask(chip, self.roi_cut, self.roi_size).reshape(-1)
-        indices = np.flatnonzero(ok & hot)
-        out = np.zeros(matrix.shape[0], dtype=np.uint8)
-        if indices.size:
-            out[indices] = self._classes(self.estimator.predict(matrix[indices]))
+        out = self.predict_matrix(matrix, ok, hot)
         return out.reshape(shape)
 
     def predict_matrix(self, matrix: np.ndarray, ok: np.ndarray, hot: np.ndarray) -> np.ndarray:
@@ -181,8 +503,19 @@ class SeverityModel:
         indices = np.flatnonzero(np.asarray(ok).reshape(-1) & np.asarray(hot).reshape(-1))
         out = np.zeros(matrix.shape[0], dtype=np.uint8)
         if indices.size:
-            out[indices] = self._classes(self.estimator.predict(matrix[indices]))
+            if self.kind == "regressor":
+                out[indices] = self._classes(np.asarray(self.estimator.predict(matrix[indices])))
+            else:
+                out[indices] = self._classes_from_proba(self.proba_matrix(matrix[indices]))
         return out
+
+    def describe(self) -> str:
+        """Короткая строка для отчётов: бэкенд, устройство, число моделей, набор признаков."""
+
+        n = len(self.members) if self.members else 1
+        bias = "" if self.class_bias is None else " + смещения классов"
+        return (f"{self.backend}/{self.device}, признаков {len(self.feature_names)}, "
+                f"моделей {n}{bias}")
 
     # --- сериализация
 
@@ -199,4 +532,110 @@ class SeverityModel:
             model = pickle.load(fh)
         if not isinstance(model, cls):
             raise TypeError(f"{path}: ожидался SeverityModel, получено {type(model)!r}")
+        # модели, сохранённые до появления устройств/наборов признаков, читаются как есть
+        for name, default in (("feature_names", FEATURE_NAMES_BASE), ("backend", "sklearn"),
+                              ("device", "cpu"), ("class_bias", None), ("members", [])):
+            if not hasattr(model, name) or getattr(model, name) is None and name == "members":
+                setattr(model, name, default)
         return model
+
+
+# ---------------------------------------------------------------- обучение
+
+def collect_training_pixels(dataset, chip_ids: list[str], pixels_per_chip: int,
+                            feature_names: str | tuple[str, ...] = "base",
+                            seed: int = 20260918, verbose: bool = False) -> tuple[np.ndarray, np.ndarray]:
+    """Собирает обучающую матрицу: разреженная подвыборка пикселей по каждому чипу.
+
+    Пиксели берутся разреженно, потому что количество положительных пикселей на чипах различается
+    на порядки; ``pixels_per_chip=0`` — брать все валидные пиксели чипа.
+    """
+
+    names = feature_names_for(feature_names)
+    rng = np.random.default_rng(seed)
+    features, labels = [], []
+    for chip_id in chip_ids:
+        chip = dataset.load(chip_id)
+        if chip.mask_sev is None:
+            continue
+        matrix, ok = chip_features(chip, names)
+        truth = np.asarray(chip.mask_sev, dtype=np.uint8).reshape(-1)
+        indices = np.flatnonzero(ok)
+        if pixels_per_chip and indices.size > pixels_per_chip:
+            indices = rng.choice(indices, size=pixels_per_chip, replace=False)
+        features.append(matrix[indices])
+        labels.append(truth[indices])
+    if not features:
+        raise ValueError("не нашлось ни одного чипа с маской степени поражения")
+    X = np.concatenate(features)
+    y = np.concatenate(labels)
+    if verbose:
+        print(f"  обучающих пикселей: {X.shape[0]}, признаков: {X.shape[1]}, "
+              f"классы: {dict(zip(*np.unique(y, return_counts=True)))}")
+    return X, y
+
+
+def class_weights(y: np.ndarray, mode: str = "sqrt") -> np.ndarray:
+    """Веса классов по частоте: ``sqrt`` (как в первой версии), ``inv`` (строго 1/n), ``none``."""
+
+    counts = np.bincount(y, minlength=4).astype(float)
+    if mode == "none":
+        weights = np.ones(4)
+    elif mode == "inv":
+        weights = 1.0 / np.maximum(counts, 1)
+    else:
+        weights = 1.0 / np.sqrt(np.maximum(counts, 1))
+    sample_weight = weights[y]
+    return sample_weight * (len(sample_weight) / sample_weight.sum())
+
+
+def train_model(X: np.ndarray, y: np.ndarray, *, params: dict | None = None,
+                backend: str = "auto", device: str = "auto", feature_names="base",
+                weight_mode: str = "sqrt", seed: int = 20260918, verbose: bool = True) -> SeverityModel:
+    """Обучает одну модель степени поражения и упаковывает её в :class:`SeverityModel`."""
+
+    params = dict(params or {})
+    device = resolve_device(device)
+    backend = pick_backend(device, backend)
+    estimator = make_estimator(backend, device, params, seed)
+    sample_weight = class_weights(y, weight_mode)
+    estimator.fit(X, y, sample_weight=sample_weight)
+    model = SeverityModel(
+        estimator=estimator,
+        kind=str(params.get("kind", "classifier")),
+        feature_names=feature_names_for(feature_names),
+        backend=backend,
+        device=device,
+        metrics={"backend": backend, "device": device, "params": params, "weight_mode": weight_mode,
+                 "features": list(feature_names_for(feature_names)), "seed": seed},
+    )
+    if verbose:
+        print(f"  модель обучена: {backend}/{device}, итераций {params.get('iterations')}, "
+              f"{X.shape[0]} пикселей, {X.shape[1]} признаков")
+    return model
+
+
+def ensemble_model(models: list[SeverityModel], metrics: dict | None = None) -> SeverityModel:
+    """Собирает ансамбль: усреднение вероятностей моделей одного набора признаков.
+
+    Модели должны быть обучены на одних и тех же столбцах (проверяется по ``feature_names``).
+    """
+
+    models = [m for m in models if m is not None]
+    if not models:
+        raise ValueError("ансамбль пуст")
+    names = models[0].feature_names
+    for model in models:
+        if tuple(model.feature_names) != tuple(names):
+            raise ValueError("в ансамбле модели с разными наборами признаков")
+    result = SeverityModel(
+        estimator=None,
+        kind=models[0].kind,
+        feature_names=tuple(names),
+        backend=models[0].backend,
+        device=models[0].device,
+        members=[m.estimator for m in models],
+        metrics=dict(metrics or {}),
+    )
+    result.metrics.setdefault("ensemble_size", len(models))
+    return result

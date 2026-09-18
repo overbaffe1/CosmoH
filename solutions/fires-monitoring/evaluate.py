@@ -57,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--weights", default=None)
     ap.add_argument("--ablation", action="store_true")
     ap.add_argument("--blob-filter", default=None, help="путь к weights/blob_filter.pkl")
+    ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default=None,
+                    help="где считать модель степени поражения (по умолчанию — как обучена)")
     args = ap.parse_args(argv)
 
     dataset = Dataset(args.data_dir)
@@ -67,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     from fires.blobfilter import BlobFilter
 
     blob_filter = BlobFilter.load(args.blob_filter) if args.blob_filter else None
-    severity_model = load_severity_model(weights, args.weights)
+    severity_model = load_severity_model(weights, args.weights, args.device)
     print("=== Итоговая конфигурация ===")
     print(json.dumps(evaluate(dataset, af_params, bs_params, blob_filter=blob_filter,
                               severity_model=severity_model), ensure_ascii=False, indent=2))
@@ -83,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def load_severity_model(weights: dict, weights_path: str | Path | None) -> "SeverityModel | None":
+def load_severity_model(weights: dict, weights_path: str | Path | None, device: str | None = None) -> "SeverityModel | None":
     """Загружает обученную модель степени поражения, если решение выбрало режим ``model``."""
 
     name = weights.get("severity_model")
@@ -94,7 +96,12 @@ def load_severity_model(weights: dict, weights_path: str | Path | None) -> "Seve
     if not path.exists():
         return None
     try:
-        return SeverityModel.load(path)
+        model = SeverityModel.load(path)
+        if device:
+            from fires.severity import resolve_device
+
+            model.device = resolve_device(device)
+        return model
     except Exception as exc:  # модель собрана другой версией sklearn — считаем на порогах
         print(f"[warn] модель степени поражения {path} не загрузилась ({exc}); работаю на порогах", file=sys.stderr)
         return None
