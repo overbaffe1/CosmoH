@@ -164,6 +164,7 @@ def process(
         results = [_process_chip(chip_id) for chip_id in template_ids]
 
     rows: list[dict] = []
+    empty_by_class: dict[str, int] = {"1": 0, "2": 0, "3": 0}
     shapes: dict[str, tuple[int, int]] = {}
     stats: dict[str, dict] = {"af": {}, "bs": {}}
     af_px_total = bs_px_total = 0
@@ -182,7 +183,10 @@ def process(
         af_px_total += result["af_px"]
         bs_px_total += result["bs_px"]
         for class_id, mask in result["rows"]:
-            rows.append({"chip_id": chip_id, "class_id": class_id, "rle": _rle(mask)})
+            rle = _rle(mask)
+            if not rle:
+                empty_by_class[str(class_id)] = empty_by_class.get(str(class_id), 0) + 1
+            rows.append({"chip_id": chip_id, "class_id": class_id, "rle": rle})
         processed += 1
 
     write_submission(rows, output)
@@ -192,6 +196,7 @@ def process(
         "chips_processed": processed,
         "chips_skipped": skipped,
         "rows_written": len(rows),
+        "rows_without_pixels": empty_by_class,
         "af_fire_px": af_px_total,
         "bs_burned_px": bs_px_total,
         "seconds": round(elapsed, 2),

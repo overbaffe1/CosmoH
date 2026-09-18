@@ -73,6 +73,20 @@ def test_write_and_read_submission(tmp_path) -> None:
     assert header == ["chip_id", "class_id", "rle"]
 
 
+def test_empty_rle_is_quoted(tmp_path) -> None:
+    """Постановка требует пустую строку в кавычках, а не пустую ячейку (иначе это «пропуск»)."""
+
+    rows = [
+        {"chip_id": "af_1", "class_id": 1, "rle": ""},
+        {"chip_id": "bs_1", "class_id": 2, "rle": "1 4 10 2"},
+    ]
+    path = write_submission(rows, tmp_path / "submission.csv")
+    text = path.read_text(encoding="utf-8")
+    assert 'af_1,1,""' in text, "пустая маска должна быть пустой строкой в кавычках"
+    assert 'bs_1,2,"1 4 10 2"' in text, "RLE всегда в кавычках"
+    assert ",,\n" not in text and not text.rstrip("\n").endswith(","), "пустых ячеек быть не должно"
+
+
 def test_validate_submission_detects_errors(tmp_path) -> None:
     template = tmp_path / "sample_submission.csv"
     template.write_text("chip_id,class_id,rle\naf_1,1,\nbs_1,1,\nbs_1,2,\n", encoding="utf-8")

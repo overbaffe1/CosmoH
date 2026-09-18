@@ -72,17 +72,28 @@ def decode_rle(rle: str, shape: tuple[int, int]) -> np.ndarray:
     return mask.reshape(shape)
 
 
+def _quoted(value: str) -> str:
+    """Оформляет поле в кавычках, как требует постановка (внутренние кавычки удваиваются)."""
+
+    return '"' + str(value).replace('"', '""') + '"'
+
+
 def write_submission(rows: list[dict], path: str | Path) -> Path:
-    """Пишет CSV с заголовком. ``rows`` — список словарей с ключами chip_id, class_id, rle."""
+    """Пишет CSV с заголовком. ``rows`` — список словарей с ключами chip_id, class_id, rle.
+
+    Поле ``rle`` всегда в двойных кавычках: постановка явно запрещает пустые ячейки и NaN, а
+    «нет пикселей класса» кодируется пустой строкой в кавычках (``""``). При обычной записи через
+    ``csv.QUOTE_MINIMAL`` такой пиксель превратился бы в пустое поле без кавычек, и читающий через
+    pandas валидатор платформы увидел бы пропуск вместо «пустой маски».
+    """
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
-        writer.writerow(CSV_HEADER)
+        fh.write(",".join(CSV_HEADER) + "\n")
         for row in rows:
-            rle = row.get("rle", "")
-            writer.writerow([row["chip_id"], int(row["class_id"]), "" if rle is None else rle])
+            rle = row.get("rle")
+            fh.write(f"{row['chip_id']},{int(row['class_id'])},{_quoted('' if rle is None else rle)}\n")
     return path
 
 
