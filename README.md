@@ -9,6 +9,7 @@
 |---|---|
 | [`docs/kosmohack-2026/brief.md`](docs/kosmohack-2026/brief.md) | разбор Положения и чатов: кейсы, призы, расписание, риски, рекомендация по выбору |
 | [`docs/kosmohack-2026/playbook.md`](docs/kosmohack-2026/playbook.md) | план по часам на 18–20.09, роли, сценарий защиты, ответы на вопросы жюри, чек-лист сдачи |
+| [`docs/kosmohack-2026/team-recruiting.md`](docs/kosmohack-2026/team-recruiting.md) | как собрать команду 3–5 человек (обязательное требование Положения): роли, готовые объявления для чатов, онбординг |
 | [`docs/kosmohack-2026/regulation.txt`](docs/kosmohack-2026/regulation.txt) | текстовая выгрузка Положения (для поиска по пунктам) |
 | [`docs/kosmohack-2026/chats/`](docs/kosmohack-2026/chats) | выгрузки Telegram-чатов Красноярска, СПб и Благовещенска |
 | [`docs/presentations/`](docs/presentations) | презентации обоих решений: PDF и самодостаточный HTML (13 слайдов, кириллица, оффлайн) |
