@@ -14,14 +14,18 @@
 Плюс сопутствующие артефакты: подбор параметров (`train.py`), метрика соревнования с абляциями (`evaluate.py`),
 отчёт (`docs/report.md`), презентация (`docs/presentation.pdf|html`), тесты (`tests/`, 40 тестов).
 
-**Нужен только финальный ответ для организаторов?** Минимальный путь — три команды; полный порядок
+**Нужен только финальный ответ для организаторов?** Минимальный путь — четыре команды; полный порядок
 действий с таймингами и проверками лежит в [`RUNBOOK.md`](RUNBOOK.md):
 
 ```bash
 pip install -r requirements.txt
-python -m fires.chips --data-dir ./test_data                              # диагностика раскладки
-python inference.py --data-dir ./test_data --output submission.csv --validate
+bash tools/prepare_test.sh ~/Downloads/fire-test-renamed.tar ~/firesdata/test   # распаковка теста
+python -m fires.chips --data-dir ~/firesdata/test                               # диагностика раскладки
+python inference.py --data-dir ~/firesdata/test --output submission.csv --validate
 ```
+
+`--data-dir` — это каталог, внутри которого лежат `af/`, `bs/`, `meta.csv` и `sample_submission.csv`
+(в архиве теста он вложен как `test/`, скрипт снимает лишний уровень сам).
 
 ---
 

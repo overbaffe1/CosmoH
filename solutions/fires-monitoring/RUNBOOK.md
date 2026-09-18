@@ -26,8 +26,42 @@ python -m pytest tests -q              # 40 тестов, ≈10 с — пров�
 
 ## 1. Данные
 
-**Тестовая часть** — то, что открывается на платформе: скачать архив и распаковать
-(`unrar x -o+ -ep <файл> <куда>`), раскладка та же, что в train, но без масок и без геопривязки.
+**Тестовая часть** (`fire-test-renamed.tar` ≈ 878 МБ) — то, что открывается на платформе. Внутри архива
+каталог `test/` с `af/`, `bs/`, `meta.csv` и `sample_submission.csv`; масок и геопривязки нет.
+
+Куда положить: **в любое место вне репозитория** — `--data-dir` указывает ровно на каталог, внутри которого
+лежат `af/`, `bs/`, `meta.csv`, `sample_submission.csv` (то есть на `test/` из архива, а не на его родителя):
+
+```bash
+# 1) привести архив к рабочей раскладке (распаковка + снятие лишнего уровня + проверка)
+bash tools/prepare_test.sh ~/Downloads/fire-test-renamed.tar ~/firesdata/test
+
+# 2) и сразу ответ
+cd solutions/fires-monitoring
+python -m fires.chips --data-dir ~/firesdata/test                 # диагностика раскладки
+python inference.py --data-dir ~/firesdata/test --output submission.csv --validate
+```
+
+Ожидаемая раскладка после распаковки (если делаете руками — `tar xf fire-test-renamed.tar -C ~/firesdata`
+даёт `~/firesdata/test/...`):
+
+```text
+~/firesdata/test/            ← это и есть --data-dir
+├── af/  (viirs/, aux/, images/)          AF-чипы без масок
+├── bs/  (sentinel2_pre/post, sentinel1_pre/post, aux, pre, post, sar_pre, sar_post)
+├── meta.csv
+└── sample_submission.csv    ← 447 строк: по одной на AF-чип (class_id=1) и по три на BS-чип (1/2/3)
+```
+
+Проверки, которые стоит сделать глазами: в `sample_submission.csv` **447 строк** без заголовка (180 AF +
+3 × 89 BS), каталогов `masks/` нет — `--validate` всё это проверит сам, но полезно знать ожидаемые числа.
+
+**Репетиция до/вместо теста** — макет теста из обучающей части (чипы без масок + шаблон организаторов):
+
+```bash
+python tools/make_mock_test.py --data-dir /tmp/firesdata/real/train --out ~/firesdata/mock/test --n-af 4 --n-bs 2
+python inference.py --data-dir ~/firesdata/mock/test --output /tmp/mock_submission.csv --validate   # должно быть ok: true
+```
 
 **Обучающая часть** — если её нет под рукой, скрипт заберёт те же архивы из репозитория команды:
 
@@ -65,7 +99,7 @@ python tools/update_report.py          # числа из numbers.json → docs/r
 ## 4. Ответ для организаторов (главная команда)
 
 ```bash
-python inference.py --data-dir <тест> --output submission.csv --validate
+python inference.py --data-dir ~/firesdata/test --output submission.csv --validate
 ```
 
 * `--validate` сверяет результат с `sample_submission.csv` (если он найден рядом) и проверяет формат;
