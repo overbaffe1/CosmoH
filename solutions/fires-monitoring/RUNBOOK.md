@@ -102,6 +102,9 @@ python tools/update_report.py          # числа из numbers.json → docs/r
 python inference.py --data-dir ~/firesdata/test --output submission.csv --validate
 ```
 
+**На платформу грузится именно `<data-dir>/submission.csv`** — не `sample_submission.csv` (в нём одни пустые
+строки, это шаблон организаторов: платформа примет его и поставит почти нулевой Score).
+
 * `--validate` сверяет результат с `sample_submission.csv` (если он найден рядом) и проверяет формат;
 * печатает время, число чипов и строк;
 * детерминирован: повторный запуск даёт побайтово одинаковый файл.
