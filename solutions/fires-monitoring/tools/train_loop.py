@@ -123,6 +123,10 @@ AF_TUNE_GRID = {
     "min_cluster_px": (1, 2, 3),
 }
 
+#: Сколько AF-чипов максимум берётся на тюнинг правил (по половине на поиск и на проверку).
+#: Правила — не модель: десятков чипов на половину достаточно, а полный набор удорожал бы шаг.
+AF_TUNE_MAX_CHIPS = 120
+
 #: Допуск при котором выигрыш считается «подтверждённым частично»: просадка на одной половине
 #: заметна, но невелика. Такие варианты не хуже исходного, однако и не надёжнее его.
 PARTIAL_TOLERANCE = 5e-3
@@ -351,6 +355,9 @@ def tune_af(dataset: Dataset, ids: list[str], weights: dict, numbers_path: Path,
     from fires import af as af_module
 
     blob_filter = load_blob_filter(weights, numbers_path)
+    if len(ids) > AF_TUNE_MAX_CHIPS:      # равномерная подвыборка: сохраняет состав событий
+        step = len(ids) / float(AF_TUNE_MAX_CHIPS)
+        ids = [ids[int(position * step)] for position in range(AF_TUNE_MAX_CHIPS)]
     fit_ids, check_ids = [], []
     for position, chip_id in enumerate(ids):
         (fit_ids if position % 2 == 0 else check_ids).append(chip_id)
