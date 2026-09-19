@@ -453,3 +453,48 @@ def test_tune_af_accepts_only_confirmed_rule(monkeypatch, tiny_dataset):
     assert tuned.k_sigma == tuned_value
     assert info["f1_fit_after"] > info["f1_fit_before"]
     assert tuned.delta_day == 25.0               # остальные пороги не тронуты
+
+
+def test_burn_gate_renormalises_probabilities():
+    """Бинарная голова пересобирает вероятности: класс 0 — «не гарь», классы 1–3 делят P(гарь)."""
+
+    from fires.severity import _apply_burn_gate
+
+    proba = np.array([[0.6, 0.2, 0.1, 0.1], [0.1, 0.2, 0.3, 0.4]], dtype=np.float32)
+    burn = np.array([0.25, 0.9], dtype=np.float32)
+    out = _apply_burn_gate(proba, burn)
+    assert np.allclose(out.sum(axis=1), 1.0, atol=1e-5)
+    assert np.allclose(out[:, 0], [0.75, 0.1], atol=1e-5)
+    # внутри гари соотношение классов сохраняется
+    inside = proba[0, 1:] / proba[0, 1:].sum()
+    assert np.allclose(out[0, 1:] / out[0, 1:].sum(), inside, atol=1e-5)
+    # голова говорит «не гарь» — вероятность уходит классу 0 даже там, где модель дала 1–3
+    quiet = _apply_burn_gate(proba, np.zeros(2, dtype=np.float32))
+    assert float(quiet[:, 0].min()) > 0.99
+
+
+def test_model_with_burn_gate_trains_and_survives_save(tmp_path):
+    """Голова обучается вместе с моделью, участвует в предсказании и сохраняется в файл."""
+
+    from fires.severity import SeverityModel as Model
+    from fires.severity import train_model
+
+    rng = np.random.default_rng(3)
+    x = rng.random((400, 5), dtype=np.float32)
+    y = np.where(x[:, 0] > 0.7, 1, np.where(x[:, 1] > 0.6, 2, np.where(x[:, 2] > 0.5, 3, 0)))
+    y = y.astype(np.int32)
+    model = train_model(x, y, params={"kind": "classifier", "iterations": 20, "gate": True},
+                        backend="sklearn", device="cpu", verbose=False)
+    assert model.gate is not None
+    assert "голова" in model.describe()
+    proba = model.proba_matrix(x[:30])
+    assert np.allclose(proba.sum(axis=1), 1.0, atol=1e-4)
+
+    path = model.save(tmp_path / "gate.pkl")
+    back = Model.load(path)
+    assert back.gate is not None
+    assert np.allclose(back.proba_matrix(x[:30]), proba, atol=1e-6)
+    # модель без головы читается как раньше
+    plain = train_model(x, y, params={"kind": "classifier", "iterations": 20},
+                        backend="sklearn", device="cpu", verbose=False)
+    assert plain.gate is None and "голова" not in plain.describe()

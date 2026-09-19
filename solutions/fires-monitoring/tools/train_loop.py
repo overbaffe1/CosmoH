@@ -94,6 +94,7 @@ CYCLE_SCHEDULE: list[dict] = [
                 "l2": 1.0, "hard_boost": 1.0}},
     {"name": "бэггинг: лучшая конфигурация на трёх сидах", "mode": "seedbag", "seeds": 3,
      "bias": True},
+    {"name": "бинарная голова «гарь / не гарь» поверх лучшей конфигурации", "mode": "gate"},
     {"name": "постобработка вероятностей: сглаживание и фильтр большинства", "mode": "spatial"},
     {"name": "перепроверка морфологии на лучшей модели", "mode": "postprocess"},
     {"name": "тюнинг правил активного горения (F1_af — 35 % Score)", "mode": "af"},
@@ -415,6 +416,7 @@ def train_cycle(dataset: Dataset, train_ids: list[str], config: dict, pixels: in
                                            verbose=verbose)
         if pixel_cache is not None:
             pixel_cache[key] = (X, y)
+    params.setdefault("gate", bool(config.get("gate")))
     return sev.train_model(X, y, params=params, backend=backend, device=device,
                            feature_names=features,
                            weight_mode=config.get("weight_mode", "sqrt"), seed=seed,
@@ -762,6 +764,28 @@ def main(argv: list[str] | None = None) -> int:
                 note += "; смещения " + ", ".join(f"{v:+.3f}" for v in bias)
             else:
                 result = val_cache.evaluate(model, params)
+        elif mode == "gate":
+            # Бинарная голова «гарь / не гарь» поверх лучшей обучаемой конфигурации: тот же набор
+            # признаков и та же подвыборка пикселей (кэш), поэтому сравнение честное.
+            source = best_train or best
+            if source is None:
+                print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
+                continue
+            config_best = source["config"]
+            if config_best.get("mode") not in ("train", "regressor"):
+                config_best = next((c for c in CYCLE_SCHEDULE if c.get("mode") == "train"), config_best)
+            config = {**config_best, "mode": "train", "gate": True, "name": name}
+            pixels = int(args.pixels * float(config.get("pixels_scale", 1.0)))
+            model = train_cycle(dataset, bs_train, config, pixels, device, args.seed,
+                                pixel_cache=pixel_cache)
+            model.proba_smooth, model.majority_filter = spatial[0], spatial[1]
+            model.majority_iters, model.demote_min_px = spatial[2], spatial[3]
+            bias, result = tune_bias(val_cache, model, params, smooth=spatial[0],
+                                     majority=spatial[1], majority_iters=spatial[2],
+                                     demote=spatial[3])
+            note = f"поверх «{source['name']}»; голова «гарь / не гарь» на тех же пикселях"
+            if any(abs(v) > 1e-9 for v in bias):
+                note += "; смещения " + ", ".join(f"{v:+.3f}" for v in bias)
         elif mode == "spatial":
             if best is None:
                 print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
@@ -895,7 +919,7 @@ def main(argv: list[str] | None = None) -> int:
                  "improved": improved, "note": note, "device": device,
                  "halves": halves, "stable": stable}
         results.append(entry)
-        if mode in ("train", "regressor") and model is not None:
+        if mode in ("train", "regressor", "gate") and model is not None:
             trained_models.append((value, model, entry))
 
         record = {"objective": value, "model": model, "iou_burn": iou, "miou_sev": miou,

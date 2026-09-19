@@ -310,6 +310,7 @@ def _cuda_libraries() -> dict:
 
     import ctypes
 
+    _add_cuda_dll_dirs()      # иначе на рабочей карте библиотеки видны как «нет»: каталоги не в PATH
     names = (["nvcuda.dll", "cudart64_12.dll", "cudart64_13.dll", "cublas64_12.dll",
               "cublasLt64_12.dll", "nvrtc64_120_0.dll"]
              if os.name == "nt" else
@@ -742,6 +743,8 @@ class SeverityModel:
     device: str = "cpu"
     class_bias: tuple[float, float, float, float] | None = None
     members: list = field(default_factory=list)
+    gate: object = None          # бинарная голова «гарь / не гарь» поверх класса 0
+    gate_members: list = field(default_factory=list)
     proba_smooth: int = 0        # радиус усреднения вероятностей по окружению (0 — выключено)
     majority_filter: int = 0     # радиус фильтра большинства по карте классов (0 — выключено)
     majority_iters: int = 1
@@ -774,7 +777,26 @@ class SeverityModel:
                         full[:, int(cls)] = part[:, column]
                 part = full
             total = part if total is None else total + part
-        return total / len(estimators)
+        proba = total / len(estimators)
+        burn = self._burn_probability(matrix)
+        if burn is not None:
+            proba = _apply_burn_gate(proba, burn)
+        return proba
+
+    def _burn_probability(self, matrix: np.ndarray) -> np.ndarray | None:
+        """Вероятность «гарь» по бинарной голове (усредняется по ансамблю голов), иначе None."""
+
+        gates = [g for g in (self.gate_members or [self.gate]) if g is not None]
+        if not gates:
+            return None
+        total = None
+        for gate in gates:
+            set_predict_device(gate, resolve_device(self.device))
+            part = np.asarray(gate.predict_proba(matrix), dtype=np.float32)
+            column = 1 if part.ndim == 2 and part.shape[1] > 1 else 0
+            values = part[:, column]
+            total = values if total is None else total + values
+        return total / len(gates)
 
     def _classes(self, raw: np.ndarray) -> np.ndarray:
         if self.kind == "regressor":
@@ -833,6 +855,8 @@ class SeverityModel:
             bias += f" + фильтр большинства {side}×{side}"
         if self.demote_min_px:
             bias += f" + мелкие пятна класса 3 < {int(self.demote_min_px)} px понижаются"
+        if self.gate is not None or self.gate_members:
+            bias += " + бинарная голова «гарь/не гарь»"
         return (f"{self.backend}/{self.device}, признаков {len(self.feature_names)}, "
                 f"моделей {n}{bias}")
 
@@ -855,7 +879,7 @@ class SeverityModel:
         for name, default in (("feature_names", FEATURE_NAMES_BASE), ("backend", "sklearn"),
                               ("device", "cpu"), ("class_bias", None), ("members", []),
                               ("proba_smooth", 0), ("majority_filter", 0), ("majority_iters", 1),
-                              ("demote_min_px", 0)):
+                              ("demote_min_px", 0), ("gate", None), ("gate_members", [])):
             if not hasattr(model, name) or getattr(model, name) is None and name == "members":
                 setattr(model, name, default)
         return model
@@ -939,7 +963,16 @@ def train_model(X: np.ndarray, y: np.ndarray, *, params: dict | None = None,
                                   hard_boost=float(params.get("hard_boost", 0.0)),
                                   landcover_column=landcover_column)
     estimator.fit(X, y, sample_weight=sample_weight)
+    gate = None
+    if bool(params.get("gate")):
+        # бинарная голова: «гарь (1–3) против не гари (0)» на тех же признаках и весах
+        binary = (y > 0).astype(np.int32)
+        gate_params = dict(params)
+        gate_params["kind"] = "classifier"
+        gate = make_estimator(backend, device, gate_params, seed + 1)
+        gate.fit(X, binary, sample_weight=sample_weight)
     model = SeverityModel(
+        gate=gate,
         estimator=estimator,
         kind=str(params.get("kind", "classifier")),
         feature_names=feature_names_for(feature_names),
@@ -952,6 +985,27 @@ def train_model(X: np.ndarray, y: np.ndarray, *, params: dict | None = None,
         print(f"  модель обучена: {backend}/{device}, итераций {params.get('iterations')}, "
               f"{X.shape[0]} пикселей, {X.shape[1]} признаков")
     return model
+
+
+def _apply_burn_gate(proba: np.ndarray, burn: np.ndarray) -> np.ndarray:
+    """Пересобирает вероятности по бинарной голове: P(0) = 1 − P(гарь), классы 1–3 — внутри гари.
+
+    Так слабое разделение «гарь / не гарь» (главный источник ошибок на пашне и в степи) уходит
+    отдельной голове, а голова степени отвечает только за силу выгорания внутри уже найденной гари.
+    """
+
+    burn = np.clip(np.asarray(burn, dtype=np.float32).reshape(-1, 1), 1e-6, 1.0 - 1e-6)
+    proba = np.asarray(proba, dtype=np.float32)
+    inside = proba[:, 1:].sum(axis=1, keepdims=True)
+    out = np.zeros_like(proba, dtype=np.float32)
+    out[:, 0] = 1.0 - burn.reshape(-1)
+    scale = np.where(inside > 1e-6, burn / np.maximum(inside, 1e-6), 0.0)
+    out[:, 1:] = proba[:, 1:] * scale
+    # если голова степени не дала ни одного горящего класса, делим вероятность гари поровну
+    empty = inside.reshape(-1) <= 1e-6
+    if np.any(empty):
+        out[empty, 1:] = np.repeat(burn.reshape(-1)[empty] / 3.0, 3).reshape(-1, 3)
+    return out
 
 
 def ensemble_model(models: list[SeverityModel], metrics: dict | None = None) -> SeverityModel:
@@ -974,7 +1028,10 @@ def ensemble_model(models: list[SeverityModel], metrics: dict | None = None) -> 
         backend=models[0].backend,
         device=models[0].device,
         members=[m.estimator for m in models],
+        gate_members=[m.gate for m in models if m.gate is not None],
         metrics=dict(metrics or {}),
     )
     result.metrics.setdefault("ensemble_size", len(models))
+    if result.gate_members:
+        result.metrics.setdefault("ensemble_gates", len(result.gate_members))
     return result
