@@ -449,7 +449,7 @@ def _train_severity_model(dataset: Dataset, train_ids: list[str], verbose: bool 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Подбор порогов решения «КосмоФАЙР-2»")
-    ap.add_argument("--data-dir", required=True, help="каталог обучающей части")
+    ap.add_argument("--data-dir", default=None, help="каталог обучающей части (не нужен с --gpu-report)")
     ap.add_argument("--out", default="weights/weights.json")
     ap.add_argument("--val-frac", type=float, default=0.25)
     ap.add_argument("--seed", type=int, default=SEED)
@@ -460,7 +460,28 @@ def main(argv: list[str] | None = None) -> int:
                     help="auto: xgboost на GPU, sklearn на CPU")
     ap.add_argument("--features", choices=("base", "ext"), default="base",
                     help="base — 23 признака (как в первой версии модели), ext — расширенный набор")
+    ap.add_argument("--smooth", type=int, default=0,
+                    help="радиус усреднения вероятностей модели по окружению (0 — выключено)")
+    ap.add_argument("--majority", type=int, default=0,
+                    help="радиус фильтра большинства по карте классов (0 — выключено)")
+    ap.add_argument("--gpu-report", action="store_true",
+                    help="показать, что известно про GPU, и выйти (диагностика CUDA)")
     args = ap.parse_args(argv)
+
+    if args.gpu_report:
+        import json as _json
+
+        info = gpu_report()
+        info["устройство"] = resolve_device("auto")
+        print(_json.dumps(info, ensure_ascii=False, indent=2))
+        print("\nЕсли runtime_ok = false: py -3 -m pip install --upgrade xgboost "
+              "nvidia-cuda-runtime-cu12\n"
+              "  проверка драйвера: nvidia-smi (должен показать RTX 3060 и версию драйвера)")
+        return 0
+
+    if not args.data_dir:
+        ap.error("нужен --data-dir (или запустите с --gpu-report, чтобы только проверить GPU)")
+
     if args.fast:
         AF_GRID.update({k: v[:2] for k, v in AF_GRID.items()})
         BS_GRID.update({k: v[:2] for k, v in BS_GRID.items()})
@@ -480,8 +501,13 @@ def main(argv: list[str] | None = None) -> int:
     baseline_bs = evaluate_bs(dataset, bs_val, bs_module.BSParams())
     print(f"baseline: IoU_burn={baseline_bs['iou_burn']} mIoU_sev={baseline_bs['miou_sev']} на {baseline_bs['n']} чипах")
     device = resolve_device(args.device)
-    if args.device == "cuda" and device != "cuda":
-        print(f"=== GPU недоступен ({gpu_report()['reason']}) — обучение на CPU ===")
+    report = gpu_report()
+    if device == "cuda":
+        print(f"=== обучение на GPU: xgboost {report['xgboost']}, сборка с CUDA, устройство проверено ===")
+    elif report["xgboost"] is None:
+        print("=== GPU-путь выключен: xgboost не установлен (py -3 -m pip install xgboost) ===")
+    else:
+        print(f"=== обучение на CPU: {report['reason']} ===")
     best_bs = tune_bs(dataset, bs_train, bs_val, device=device, backend=args.backend,
                       features=args.features)
 
@@ -494,8 +520,11 @@ def main(argv: list[str] | None = None) -> int:
     bs_model_path = None
     if best_bs.get("mode") == "model" and best_bs.get("severity_model") is not None:
         bs_model_path = Path(args.out).with_name("severity_model.pkl")
-        best_bs["severity_model"].save(bs_model_path)
-        print(f"модель степени поражения сохранена: {bs_model_path}")
+        model = best_bs["severity_model"]
+        model.proba_smooth = int(args.smooth)
+        model.majority_filter = int(args.majority)
+        model.save(bs_model_path)
+        print(f"модель степени поражения сохранена: {bs_model_path} ({model.describe()})")
 
     weights = {
         "version": 2,

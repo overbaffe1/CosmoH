@@ -297,6 +297,108 @@ def test_load_fills_new_fields_for_old_pickles(tmp_path):
     assert loaded.predict_chip(chip).shape == np.asarray(chip.pre["B8A"]).shape
 
 
+def test_smoothing_and_majority_remove_single_pixel_outliers():
+    """Одиночный пиксель другого класса — «соль»: усреднение вероятностей и голосование её убирают."""
+
+    from fires.severity import classify_from_proba, majority_classes, smooth_probabilities
+
+    shape = (48, 48)
+    indices = np.arange(shape[0] * shape[1])
+    proba = np.zeros((indices.size, 4), dtype=np.float32)
+    proba[:, 1] = 1.0
+    proba[1000] = [0.0, 0.0, 0.0, 1.0]  # одиночный пиксель класса 3 в однородном классе 1
+
+    assert int(classify_from_proba(proba, indices, shape)[1000]) == 3
+    assert int(classify_from_proba(proba, indices, shape, smooth=1)[1000]) == 1
+    assert int(classify_from_proba(proba, indices, shape, majority=1)[1000]) == 1
+    smoothed = smooth_probabilities(proba, indices, shape, 1)
+    assert abs(float(smoothed[1000].sum()) - 1.0) < 1e-5, "вероятности остаются нормированными"
+    voted = majority_classes(np.full(indices.size, 2, dtype=np.uint8), indices, shape, 1)
+    assert set(np.unique(voted)) == {2}, "однородная карта не меняется"
+
+
+def test_pixels_outside_roi_do_not_bleed_into_smoothing():
+    """Пиксели вне области интереса не участвуют в усреднении: край ROI не тянется к фону."""
+
+    from fires.severity import classify_from_proba
+
+    shape = (16, 16)
+    indices = np.array([0, 1, 16, 17], dtype=int)  # квадратик 2×2 в углу
+    proba = np.zeros((indices.size, 4), dtype=np.float32)
+    proba[:, 1] = 1.0
+    out = classify_from_proba(proba, indices, shape, smooth=2)
+    assert set(np.unique(out)) == {1}
+
+
+def test_small_high_severity_patches_are_demoted():
+    """Пятно класса 3 из нескольких пикселей не бывает «сильным выгоранием» — класс понижается."""
+
+    from fires.severity import demote_small_patches
+
+    shape = (32, 32)
+    indices = np.arange(shape[0] * shape[1])
+    classes = np.full(indices.size, 1, dtype=np.uint8)
+    classes[100] = 3            # одиночный пиксель
+    classes[200:203] = 3        # три пикселя
+    classes[300:320] = 3        # двадцать — настоящее пятно
+    classes[400:406] = 2        # класс 2 не трогаем
+    out = demote_small_patches(classes, indices, shape, min_px=8)
+    assert int(out[100]) == 2 and int(out[200]) == 2
+    assert int(out[300]) == 3, "крупное пятно сохраняет класс"
+    assert int(out[400]) == 2, "понижаются только указанные классы (по умолчанию 3)"
+    assert int(out[0]) == 1
+
+
+def test_model_carries_spatial_postprocessing_through_save(tmp_path):
+    """Радиусы сглаживания и большинства живут в файле модели — инференс применит их сам."""
+
+    chip = bs_chip(np.random.default_rng(16), size=96)
+    model = tiny_model(chip)
+    model.proba_smooth = 2
+    model.majority_filter = 1
+    model.majority_iters = 2
+    model.demote_min_px = 12
+    path = tmp_path / "model.pkl"
+    model.save(path)
+    loaded = SeverityModel.load(path)
+    assert (loaded.proba_smooth, loaded.majority_filter, loaded.majority_iters) == (2, 1, 2)
+    assert loaded.demote_min_px == 12
+    assert "сглаживание вероятностей 5×5" in loaded.describe()
+    assert loaded.predict_chip(chip).shape == np.asarray(chip.pre["B8A"]).shape
+
+
+def test_hardneg_weights_favour_confusable_landcover():
+    """Веса «трудных» отрицательных примеров: пашня и степь получают больший вес, сумма сохраняется."""
+
+    from fires.severity import CONFUSABLE_LANDCOVER, class_weights
+
+    y = np.array([0] * 80 + [1] * 10 + [2] * 6 + [3] * 4)
+    X = np.zeros((len(y), 23), dtype=np.float32)
+    X[:, 13] = 10.0            # лес: не путается с гарью
+    X[:40, 13] = CONFUSABLE_LANDCOVER[1]   # пашня
+    plain = class_weights(y, "hardneg", X=X, hard_boost=0.0, landcover_column=13)
+    boosted = class_weights(y, "hardneg", X=X, hard_boost=1.0, landcover_column=13)
+    assert abs(float(boosted.sum()) - len(y)) < 1e-6, "сумма весов сохраняется"
+    assert boosted[0] > plain[0], "пашня весит больше"
+    assert float(boosted[0] / boosted[60]) > float(plain[0] / plain[60]), \
+        "пашня поднимается относительно леса внутри того же класса"
+    assert abs(float(boosted[96] / boosted[97]) - float(plain[96] / plain[97])) < 1e-6, \
+        "внутри класса гари соотношение весов не меняется (изменился только общий масштаб)"
+
+
+def test_seed_bagging_ensemble_of_three_models():
+    """Бэггинг по сидам — это тот же ансамбль: описание и форма ответа сохраняются."""
+
+    from fires.severity import ensemble_model
+
+    chip = bs_chip(np.random.default_rng(17), size=96)
+    models = [tiny_model(chip) for _ in range(3)]
+    bag = ensemble_model(models, metrics={"members": ["сид 1", "сид 2", "сид 3"]})
+    assert "моделей 3" in bag.describe()
+    assert bag.metrics["ensemble_size"] == 3
+    assert bag.predict_chip(chip).shape == np.asarray(chip.pre["B8A"]).shape
+
+
 class _SingleChipDataset:
     """Минимальный «датасет» из одного чипа — для тестов сбора пикселей."""
 

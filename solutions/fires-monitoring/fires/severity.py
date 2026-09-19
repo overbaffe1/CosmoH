@@ -101,6 +101,123 @@ def _decibels(arr: np.ndarray | None, shape: tuple[int, int]) -> np.ndarray:
 
 # ---------------------------------------------------------------- устройства и бэкенды
 
+#: Покровы, на которых dNBR чаще всего путает пашню и степь с гарью (ESA WorldCover).
+CONFUSABLE_LANDCOVER: tuple[int, ...] = (30, 40, 60)
+
+
+def smooth_probabilities(proba: np.ndarray, indices: np.ndarray, shape: tuple[int, int],
+                         radius: int) -> np.ndarray:
+    """Усредняет вероятности классов по окну ``(2·radius+1)²`` внутри области интереса.
+
+    Решение по пикселю принимается не только по его спектру, но и по окружению: одиночные
+    «выбросы» класса после такого усреднения теряют перевес. Пиксели вне области интереса в
+    среднее не входят (иначе край ROI тянуло бы к фону), поэтому знаменатель — доля пикселей
+    ROI в окне.
+    """
+
+    radius = int(radius)
+    if radius <= 0 or indices.size == 0:
+        return proba
+    h, w = int(shape[0]), int(shape[1])
+    size = 2 * radius + 1
+    valid = np.zeros(h * w, dtype=np.float32)
+    valid[indices] = 1.0
+    denom = ndimage.uniform_filter(valid.reshape(h, w), size=size, mode="constant", cval=0.0)
+    denom = np.maximum(denom, 1e-6)
+    out = np.empty_like(proba, dtype=np.float32)
+    for cls in range(proba.shape[1]):
+        canvas = np.zeros(h * w, dtype=np.float32)
+        canvas[indices] = proba[:, cls]
+        num = ndimage.uniform_filter(canvas.reshape(h, w), size=size, mode="constant", cval=0.0)
+        out[:, cls] = (num / denom).reshape(-1)[indices]
+    total = np.maximum(out.sum(axis=1, keepdims=True), 1e-6)
+    return out / total
+
+
+def majority_classes(classes: np.ndarray, indices: np.ndarray, shape: tuple[int, int],
+                     radius: int, iterations: int = 1) -> np.ndarray:
+    """Фильтр большинства по карте классов: класс пикселя выбирает окно ``(2·radius+1)²``.
+
+    Отличие от :func:`smooth_probabilities`: тот усредняет уверенность модели, а этот голосует
+    уже за классы, поэтому убирает «соль и перец» — одиночные пиксели другого класса внутри
+    однородного пятна гари.
+    """
+
+    radius = int(radius)
+    if radius <= 0 or indices.size == 0:
+        return classes
+    h, w = int(shape[0]), int(shape[1])
+    size = 2 * radius + 1
+    valid = np.zeros(h * w, dtype=np.float32)
+    valid[indices] = 1.0
+    valid_map = valid.reshape(h, w)
+    current = np.zeros(h * w, dtype=np.uint8)
+    current[indices] = classes
+    for _ in range(max(1, int(iterations))):
+        votes = np.stack([
+            ndimage.uniform_filter((current.reshape(h, w) == cls).astype(np.float32),
+                                   size=size, mode="constant", cval=0.0)
+            for cls in range(4)
+        ], axis=0)
+        chosen = np.argmax(votes, axis=0).astype(np.uint8)
+        current = np.where(valid_map > 0, chosen, 0).astype(np.uint8).reshape(-1)
+    return current[indices]
+
+
+def demote_small_patches(classes: np.ndarray, indices: np.ndarray, shape: tuple[int, int],
+                         min_px: int, classes_to_demote: tuple[int, ...] = (3,)) -> np.ndarray:
+    """Понижает класс у слишком мелких пятен высокой степени поражения.
+
+    Пятно из нескольких пикселей не бывает «сильно выгоревшим»: в разметке это чаще всего край
+    настоящего контура или пиксель, где dNBR сложился случайно. Такие пятна понижаются на один
+    класс (3 → 2, 2 → 1), что улучшает и IoU_burn, и mIoU_sev.
+    """
+
+    min_px = int(min_px)
+    if min_px <= 1 or indices.size == 0:
+        return classes
+    h, w = int(shape[0]), int(shape[1])
+    out = classes.copy()
+    for cls in classes_to_demote:
+        binary = np.zeros(h * w, dtype=bool)
+        binary[indices] = out == cls
+        grid = binary.reshape(h, w)
+        labels, count = ndimage.label(grid)
+        if not count:
+            continue
+        sizes = np.bincount(labels.reshape(-1))
+        small = np.zeros(count + 1, dtype=bool)
+        small[1:] = sizes[1:] < min_px
+        demote = small[labels.reshape(-1)] & grid.reshape(-1)
+        out[demote[indices]] = np.uint8(cls - 1)
+    return out
+
+
+def classify_from_proba(proba: np.ndarray, indices: np.ndarray, shape: tuple[int, int],
+                        bias=None, smooth: int = 0, majority: int = 0,
+                        majority_iters: int = 1, demote_min_px: int = 0) -> np.ndarray:
+    """Вероятности ROI → классы 0–3 (смещения, сглаживание вероятностей, фильтр большинства).
+
+    Один и тот же путь используется моделью при инференсе и циклом обучения при переборе
+    постобработки — иначе метрика на отложенной части не соответствовала бы ответу.
+    """
+
+    if indices.size == 0:
+        return np.zeros(0, dtype=np.uint8)
+    scored = proba
+    if int(smooth) > 0:
+        scored = smooth_probabilities(np.asarray(scored, dtype=np.float32),
+                                      indices, shape, int(smooth))
+    if bias is not None:
+        scored = np.asarray(scored, dtype=np.float32) + np.asarray(bias, dtype=np.float32)
+    classes = np.argmax(scored, axis=1).astype(np.uint8)
+    if int(majority) > 0:
+        classes = majority_classes(classes, indices, shape, int(majority), int(majority_iters))
+    if int(demote_min_px) > 1:
+        classes = demote_small_patches(classes, indices, shape, int(demote_min_px))
+    return classes
+
+
 def gpu_report() -> dict:
     """Что известно про GPU: версия xgboost, собран ли он с CUDA и работает ли она здесь.
 
@@ -445,6 +562,10 @@ class SeverityModel:
     device: str = "cpu"
     class_bias: tuple[float, float, float, float] | None = None
     members: list = field(default_factory=list)
+    proba_smooth: int = 0        # радиус усреднения вероятностей по окружению (0 — выключено)
+    majority_filter: int = 0     # радиус фильтра большинства по карте классов (0 — выключено)
+    majority_iters: int = 1
+    demote_min_px: int = 0       # мелкие пятна класса 2/3 понижаются на класс (0 — выключено)
 
     # --- предсказание
 
@@ -494,7 +615,17 @@ class SeverityModel:
         matrix, ok = chip_features(chip, self.feature_names)
         shape = np.asarray(chip.pre["B8A"]).shape
         hot = roi_mask(chip, self.roi_cut, self.roi_size).reshape(-1)
-        out = self.predict_matrix(matrix, ok, hot)
+        indices = np.flatnonzero(np.asarray(ok).reshape(-1) & hot)
+        out = np.zeros(matrix.shape[0], dtype=np.uint8)
+        if indices.size:
+            if self.kind == "regressor":
+                out[indices] = self._classes(np.asarray(self.estimator.predict(matrix[indices])))
+            else:
+                out[indices] = classify_from_proba(
+                    self.proba_matrix(matrix[indices]), indices, (int(shape[0]), int(shape[1])),
+                    bias=self.class_bias, smooth=self.proba_smooth,
+                    majority=self.majority_filter, majority_iters=self.majority_iters,
+                    demote_min_px=self.demote_min_px)
         return out.reshape(shape)
 
     def predict_matrix(self, matrix: np.ndarray, ok: np.ndarray, hot: np.ndarray) -> np.ndarray:
@@ -514,6 +645,14 @@ class SeverityModel:
 
         n = len(self.members) if self.members else 1
         bias = "" if self.class_bias is None else " + смещения классов"
+        if self.proba_smooth:
+            side = 2 * int(self.proba_smooth) + 1
+            bias += f" + сглаживание вероятностей {side}×{side}"
+        if self.majority_filter:
+            side = 2 * int(self.majority_filter) + 1
+            bias += f" + фильтр большинства {side}×{side}"
+        if self.demote_min_px:
+            bias += f" + мелкие пятна класса 3 < {int(self.demote_min_px)} px понижаются"
         return (f"{self.backend}/{self.device}, признаков {len(self.feature_names)}, "
                 f"моделей {n}{bias}")
 
@@ -534,7 +673,9 @@ class SeverityModel:
             raise TypeError(f"{path}: ожидался SeverityModel, получено {type(model)!r}")
         # модели, сохранённые до появления устройств/наборов признаков, читаются как есть
         for name, default in (("feature_names", FEATURE_NAMES_BASE), ("backend", "sklearn"),
-                              ("device", "cpu"), ("class_bias", None), ("members", [])):
+                              ("device", "cpu"), ("class_bias", None), ("members", []),
+                              ("proba_smooth", 0), ("majority_filter", 0), ("majority_iters", 1),
+                              ("demote_min_px", 0)):
             if not hasattr(model, name) or getattr(model, name) is None and name == "members":
                 setattr(model, name, default)
         return model
@@ -575,8 +716,16 @@ def collect_training_pixels(dataset, chip_ids: list[str], pixels_per_chip: int,
     return X, y
 
 
-def class_weights(y: np.ndarray, mode: str = "sqrt") -> np.ndarray:
-    """Веса классов по частоте: ``sqrt`` (как в первой версии), ``inv`` (строго 1/n), ``none``."""
+def class_weights(y: np.ndarray, mode: str = "sqrt", X: np.ndarray | None = None,
+                  hard_boost: float = 0.0,
+                  landcover_column: int | None = None) -> np.ndarray:
+    """Веса пикселей по частоте классов: ``sqrt``, ``inv``, ``none``, ``hardneg``.
+
+    ``hardneg`` — тот же ``sqrt`` плюс надбавка пикселям класса 0 (не гарь) на пашне, степи и
+    открытой почве: по разбору ошибок 66 % ложных пикселей BS приходится именно на эти покровы
+    (фенологический dNBR там неотличим от слабого горения), и модели выгодно ошибаться на них
+    реже. Для этого нужен столбец ``landcover`` в матрице признаков.
+    """
 
     counts = np.bincount(y, minlength=4).astype(float)
     if mode == "none":
@@ -586,6 +735,12 @@ def class_weights(y: np.ndarray, mode: str = "sqrt") -> np.ndarray:
     else:
         weights = 1.0 / np.sqrt(np.maximum(counts, 1))
     sample_weight = weights[y]
+    if mode == "hardneg" and X is not None and hard_boost > 0:
+        column = -1 if landcover_column is None else int(landcover_column)
+        if 0 <= column < X.shape[1]:
+            codes = np.rint(np.asarray(X[:, column], dtype=np.float32)).astype(int)
+            confusable = np.isin(codes, CONFUSABLE_LANDCOVER) & (y == 0)
+            sample_weight = sample_weight * np.where(confusable, 1.0 + float(hard_boost), 1.0)
     return sample_weight * (len(sample_weight) / sample_weight.sum())
 
 
@@ -598,7 +753,11 @@ def train_model(X: np.ndarray, y: np.ndarray, *, params: dict | None = None,
     device = resolve_device(device)
     backend = pick_backend(device, backend)
     estimator = make_estimator(backend, device, params, seed)
-    sample_weight = class_weights(y, weight_mode)
+    names = feature_names_for(feature_names)
+    landcover_column = names.index("landcover") if "landcover" in names else None
+    sample_weight = class_weights(y, weight_mode, X=X,
+                                  hard_boost=float(params.get("hard_boost", 0.0)),
+                                  landcover_column=landcover_column)
     estimator.fit(X, y, sample_weight=sample_weight)
     model = SeverityModel(
         estimator=estimator,

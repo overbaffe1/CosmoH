@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Цикл обучения модели степени поражения BS: 12 проходов с отчётом «стало лучше или нет».
+"""Цикл обучения модели степени поражения BS: 15 проходов с отчётом «стало лучше или нет».
 
 Зачем отдельный скрипт. ``train.py`` подбирает всю конфигурацию решения (правила AF, пороги
 dNBR, режим BS) и занимает ≈20 минут — гонять его после каждой идеи неудобно. Этот скрипт
@@ -7,7 +7,8 @@ dNBR, режим BS) и занимает ≈20 минут — гонять ег�
 на том же разбиении по событиям пожара, что и ``train.py`` (168 чипов обучение / 56 отложенных),
 считает метрики соревнования на отложенной части и печатает разницу с лучшим результатом.
 
-    py -3 tools\\train_loop.py --data-dir %USERPROFILE%\\Documents\\cosmo1\\train          # 12 циклов
+    py -3 tools\\train_loop.py --data-dir %USERPROFILE%\\Documents\\cosmo1\\train          # 15 циклов
+    py -3 tools\\train_loop.py --data-dir ... --device cuda --save                        # GPU-обучение
     py -3 tools\\train_loop.py --data-dir ... --device cpu                                # без GPU
     py -3 tools\\train_loop.py --data-dir ... --cycles 4 --quick                          # быстрая проверка
 
@@ -20,6 +21,11 @@ dNBR, режим BS) и занимает ≈20 минут — гонять ег�
 Проекция Score: ``0.35·F1_af + 0.35·IoU_burn + 0.30·mIoU_sev`` — ровно формула кейса. Так как
 F1_af не зависит от модели степени поражения, берётся один замер на всём AF-наборе (из
 ``docs/numbers.json``, если он есть, иначе пересчитывается) и подставляется в обе оценки.
+
+Что перебирается: ёмкость модели, число пикселей на чип, наборы признаков (23 базовых против
+40 расширенных), веса классов и веса сложных покрытий (пашня и степь как «трудные» отрицательные
+примеры), бэггинг по сидам, ансамбль разных моделей, смещения классов, пространственная
+постобработка вероятностей (усреднение по окружению и фильтр большинства) и морфология маски.
 """
 
 from __future__ import annotations
@@ -82,6 +88,13 @@ CYCLE_SCHEDULE: list[dict] = [
      "pixels_scale": 4.0, "bias": True,
      "params": {"iterations": 250, "learning_rate": 0.10, "leaves": 48, "min_samples_leaf": 40,
                 "l2": 1.0}},
+    {"name": "веса пикселей: пашня и степь как сложные отрицательные", "mode": "train",
+     "features": "base", "weight_mode": "hardneg", "bias": True,
+     "params": {"iterations": 250, "learning_rate": 0.10, "leaves": 48, "min_samples_leaf": 40,
+                "l2": 1.0, "hard_boost": 1.0}},
+    {"name": "бэггинг: лучшая конфигурация на трёх сидах", "mode": "seedbag", "seeds": 3,
+     "bias": True},
+    {"name": "постобработка вероятностей: сглаживание и фильтр большинства", "mode": "spatial"},
     {"name": "перепроверка морфологии на лучшей модели", "mode": "postprocess"},
     {"name": "переобучение лучшей конфигурации на всех чипах", "mode": "all_data"},
 ]
@@ -154,7 +167,9 @@ class ValCache:
 
     def score_from_probabilities(self, values: list[np.ndarray], params: bs_module.BSParams,
                                  bias=None, cuts=(0.5, 1.5, 2.5),
-                                 subset: set[int] | None = None) -> dict:
+                                 subset: set[int] | None = None,
+                                 smooth: int = 0, majority: int = 0,
+                                 majority_iters: int = 1, demote: int = 0) -> dict:
         """Метрики по заранее посчитанным вероятностям (или непрерывной степени для регрессии).
 
         ``subset`` — позиции чипов, которые входят в замер (по умолчанию — все): на нём держится
@@ -173,8 +188,11 @@ class ValCache:
                     for cls, cut in zip((1, 2, 3), cuts):
                         classes[value >= cut] = cls
                 else:
-                    scored = value if bias_array is None else value + bias_array
-                    classes = np.argmax(scored, axis=1).astype(np.uint8)
+                    classes = sev.classify_from_proba(
+                        np.asarray(value, dtype=np.float32), item["indices"],
+                        (int(item["shape"][0]), int(item["shape"][1])), bias=bias_array,
+                        smooth=smooth, majority=majority, majority_iters=majority_iters,
+                        demote_min_px=demote)
                 full[item["indices"]] = classes
             pred = bs_module.postprocess(full.reshape(item["shape"]), params)
             pairs[item["chip_id"]] = (item["truth"].reshape(item["shape"]), pred)
@@ -196,7 +214,12 @@ class ValCache:
             if chiplimit:
                 self.chips = saved
         cuts = getattr(model, "cuts", (0.5, 1.5, 2.5))
-        return self.score_from_probabilities(values, params, bias=bias, cuts=cuts)
+        return self.score_from_probabilities(
+            values, params, bias=bias, cuts=cuts,
+            smooth=int(getattr(model, "proba_smooth", 0) or 0),
+            majority=int(getattr(model, "majority_filter", 0) or 0),
+            majority_iters=int(getattr(model, "majority_iters", 1) or 1),
+            demote=int(getattr(model, "demote_min_px", 0) or 0))
 
 
 def estimator_predict(model: sev.SeverityModel, matrix: np.ndarray) -> np.ndarray:
@@ -297,7 +320,8 @@ def verification_split(cache: ValCache) -> tuple[list[int], list[int]]:
 
 
 def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSParams,
-              base_bias=None) -> tuple[tuple, dict]:
+              base_bias=None, smooth: int = 0, majority: int = 0,
+              majority_iters: int = 1, demote: int = 0) -> tuple[tuple, dict]:
     """Координатный подъём по смещениям классов: максимум объектива на отложенных чипах.
 
     Вероятности считаются один раз, поэтому каждый вариант смещений — это только пересчёт
@@ -305,14 +329,18 @@ def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSPar
     """
 
     values = cache.probabilities(model)
-    full = cache.score_from_probabilities(values, params, bias=base_bias)
+    full = cache.score_from_probabilities(values, params, bias=base_bias, smooth=smooth,
+                                          majority=majority, majority_iters=majority_iters,
+                                          demote=demote)
     bias = list(base_bias or (0.0, 0.0, 0.0, 0.0))
     fit_ids, check_ids = verification_split(cache)
 
     fit_set, check_set = set(fit_ids), set(check_ids)
 
     def subset_score(candidate, positions) -> float:
-        result = cache.score_from_probabilities(values, params, bias=candidate, subset=positions)
+        result = cache.score_from_probabilities(values, params, bias=candidate, subset=positions,
+                                                smooth=smooth, majority=majority,
+                                                majority_iters=majority_iters, demote=demote)
         return objective(result["iou_burn"], result["miou_sev"])
 
     best_obj = subset_score(bias, fit_set)
@@ -331,7 +359,9 @@ def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSPar
         tuned_check = subset_score(bias, check_set)
         if tuned_check <= base_check + 1e-5:
             bias = list(base_bias or (0.0, 0.0, 0.0, 0.0))
-    result_full = cache.score_from_probabilities(values, params, bias=bias)
+    result_full = cache.score_from_probabilities(values, params, bias=bias, smooth=smooth,
+                                                 majority=majority, majority_iters=majority_iters,
+                                                 demote=demote)
     result_full["bias_verified"] = bool(any(abs(v) > 1e-9 for v in bias))
     result_full["bias_full_objective"] = objective(full["iou_burn"], full["miou_sev"])
     return tuple(round(v, 4) for v in bias), result_full
@@ -371,11 +401,22 @@ def main(argv: list[str] | None = None) -> int:
                     help="быстрый прогон для проверки работоспособности (меньше пикселей и чипов, "
                          "но все 12 циклов на месте; регрессия степени в расписании не участвует — "
                          "она проверена и оказалась хуже классификации)")
+    ap.add_argument("--gpu-report", action="store_true",
+                    help="показать, что известно про GPU, и выйти (диагностика CUDA)")
     ap.add_argument("--report", default=None,
                     help="куда записать отчёт о цикле (по умолчанию docs/severity_loop.json)")
     ap.add_argument("--save", action="store_true",
                     help="записать лучшую модель в weights (по умолчанию только отчёт)")
     args = ap.parse_args(argv)
+
+    if args.gpu_report:
+        info = sev.gpu_report()
+        info["устройство"] = sev.resolve_device(args.device)
+        print(json.dumps(info, ensure_ascii=False, indent=2))
+        print("\nЕсли runtime_ok = false: py -3 -m pip install --upgrade xgboost "
+              "nvidia-cuda-runtime-cu12\n"
+              "  проверка драйвера: nvidia-smi (должен показать RTX 3060 и версию драйвера)")
+        return 0
 
     if args.quick:
         # быстрый режим: меньше пикселей и чипов отложенной части, но все циклы на месте —
@@ -470,6 +511,11 @@ def main(argv: list[str] | None = None) -> int:
         model: sev.SeverityModel | None = None
         bias = None
         params = bs_params
+        # текущая принятая постобработка вероятностей: с ней оцениваются все последующие шаги,
+        # иначе сравнение шагов было бы неоднородным (сглаживание меняет метрику заметно)
+        spatial = ((int(best.get("smooth", 0) or 0), int(best.get("majority", 0) or 0),
+                    int(best.get("majority_iters", 1) or 1), int(best.get("demote", 0) or 0))
+                   if best else (0, 0, 1, 0))
 
         if mode in ("train", "regressor"):
             pixels = int(args.pixels * float(config.get("pixels_scale", 1.0)))
@@ -479,11 +525,16 @@ def main(argv: list[str] | None = None) -> int:
                 cuts = tunable_cuts(val_cache, model, params)
                 note = f"пороги классов {tuple(round(c, 2) for c in cuts['cuts'])}"
             if config.get("bias"):
-                bias, result = tune_bias(val_cache, model, params)
+                bias, result = tune_bias(val_cache, model, params, smooth=spatial[0],
+                                         majority=spatial[1], majority_iters=spatial[2],
+                                         demote=spatial[3])
                 if any(abs(v) > 1e-9 for v in bias):
                     note = (note + "; " if note else "") + "смещения " + ", ".join(
                         f"{v:+.3f}" for v in bias)
             if not note or not config.get("bias"):
+                model.proba_smooth, model.majority_filter = spatial[0], spatial[1]
+                model.majority_iters = spatial[2]
+                model.demote_min_px = spatial[3]
                 result = val_cache.evaluate(model, params, bias=bias)
         elif mode == "ensemble":
             # в ансамбль берутся модели с тем же набором признаков, что у лучшей: расширенный
@@ -501,16 +552,74 @@ def main(argv: list[str] | None = None) -> int:
                                        metrics={"members": [item[2]["name"] for item in top]})
             note = " + ".join(item[2]["name"] for item in top)
             if config.get("bias"):
-                bias, result = tune_bias(val_cache, model, params)
+                bias, result = tune_bias(val_cache, model, params, smooth=spatial[0],
+                                         majority=spatial[1], majority_iters=spatial[2],
+                                         demote=spatial[3])
+                note += "; смещения " + ", ".join(f"{v:+.3f}" for v in bias)
+            else:
+                model.proba_smooth, model.majority_filter = spatial[0], spatial[1]
+                model.majority_iters = spatial[2]
+                model.demote_min_px = spatial[3]
+                result = val_cache.evaluate(model, params)
+        elif mode == "seedbag":
+            if best is None:
+                print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
+                continue
+            source = best_train or best
+            config_best = source["config"]
+            if config_best.get("mode") != "train":
+                config_best = next((c for c in CYCLE_SCHEDULE if c.get("mode") == "train"), config_best)
+            seeds = [args.seed + 1000 * k for k in range(int(config.get("seeds", 3)))]
+            models = [train_cycle(dataset, bs_train, config_best,
+                                  int(args.pixels * float(config_best.get("pixels_scale", 1.0))),
+                                  device, seed_k, pixel_cache=pixel_cache) for seed_k in seeds]
+            model = sev.ensemble_model(models, metrics={"members": [f"сид {v}" for v in seeds],
+                                                        "base": config_best.get("name")})
+            note = f"{config_best.get('name')} × {len(seeds)} сида"
+            if config.get("bias"):
+                bias, result = tune_bias(val_cache, model, params, smooth=spatial[0],
+                                         majority=spatial[1], majority_iters=spatial[2],
+                                         demote=spatial[3])
                 note += "; смещения " + ", ".join(f"{v:+.3f}" for v in bias)
             else:
                 result = val_cache.evaluate(model, params)
+        elif mode == "spatial":
+            if best is None:
+                print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
+                continue
+            model = best["model"]
+            values = val_cache.probabilities(model)
+            base_bias = best.get("bias")
+            combos = [(0, 0, 1, 0), (1, 0, 1, 0), (2, 0, 1, 0), (1, 1, 1, 0), (2, 1, 1, 0),
+                      (1, 2, 1, 0), (2, 2, 1, 0), (1, 1, 1, 16), (2, 1, 1, 16), (2, 2, 1, 24)]
+            chosen = None
+            for smooth, majority, iters, demote in combos:
+                # смещения подбираются заново: сглаживание меняет масштаб вероятностей,
+                # поэтому смещения, найденные без него, перестают быть оптимальными
+                cand_bias, res = tune_bias(val_cache, model, params, base_bias=base_bias,
+                                           smooth=smooth, majority=majority,
+                                           majority_iters=iters, demote=demote)
+                value = objective(res["iou_burn"], res["miou_sev"])
+                if chosen is None or value > chosen[0]:
+                    chosen = (value, smooth, majority, iters, res, cand_bias, demote)
+            _, smooth, majority, iters, result, bias, demote = chosen
+            spatial = (smooth, majority, iters, demote)
+            parts = []
+            if smooth:
+                parts.append(f"усреднение вероятностей {2 * smooth + 1}×{2 * smooth + 1}")
+            if majority:
+                parts.append(f"фильтр большинства {2 * majority + 1}×{2 * majority + 1}")
+            if demote:
+                parts.append(f"мелкие пятна класса 3 < {demote} px понижаются")
+            note = "; ".join(parts) if parts else "пространственная постобработка не помогла"
         elif mode == "bias":
             if best is None:
                 print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
                 continue
             model = best["model"]
-            bias, result = tune_bias(val_cache, model, params, base_bias=model.class_bias)
+            bias, result = tune_bias(val_cache, model, params, base_bias=model.class_bias,
+                                     smooth=spatial[0], majority=spatial[1],
+                                     majority_iters=spatial[2], demote=spatial[3])
             note = "смещения " + ", ".join(f"{v:+.3f}" for v in bias)
         elif mode == "postprocess":
             if best is None:
@@ -523,7 +632,10 @@ def main(argv: list[str] | None = None) -> int:
             values = val_cache.probabilities(model)
             chosen = None
             for candidate in variants:
-                res = val_cache.score_from_probabilities(values, candidate, bias=model.class_bias)
+                res = val_cache.score_from_probabilities(
+                    values, candidate, bias=model.class_bias,
+                    smooth=spatial[0], majority=spatial[1], majority_iters=spatial[2],
+                    demote=spatial[3])
                 value = objective(res["iou_burn"], res["miou_sev"])
                 if chosen is None or value > chosen[0]:
                     chosen = (value, candidate, res)
@@ -578,12 +690,24 @@ def main(argv: list[str] | None = None) -> int:
 
         record = {"objective": value, "model": model, "iou_burn": iou, "miou_sev": miou,
                   "score": score, "cycle": index, "name": name, "config": config,
-                  "bias": bias, "params": params, "entry": entry}
+                  "bias": bias, "params": params, "entry": entry,
+                  "smooth": spatial[0], "majority": spatial[1], "majority_iters": spatial[2],
+                  "demote": spatial[3]}
         if optimistic:
+            # модель для сабмита: к ней применяется лучшая найденная постобработка вероятностей
             final = record
+            model.proba_smooth = int(best.get("smooth", 0) or 0)
+            model.majority_filter = int(best.get("majority", 0) or 0)
+            model.majority_iters = int(best.get("majority_iters", 1) or 1)
+            model.demote_min_px = int(best.get("demote", 0) or 0)
         elif best is None or improved:
             if bias is None and mode == "postprocess":
                 bias = best.get("bias") if best else None
+            if mode == "spatial" and model is not None:
+                model.proba_smooth = int(spatial[0])
+                model.majority_filter = int(spatial[1])
+                model.majority_iters = int(spatial[2])
+                model.demote_min_px = int(spatial[3])
             best = record
             if mode == "train":
                 best_train = record
@@ -651,17 +775,26 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\nпрежняя модель сохранена: {prev}")
         submit_model: sev.SeverityModel = submit["model"]
         submit_model.class_bias = None if submit.get("bias") is None else tuple(submit["bias"])
+        submit_model.proba_smooth = int(best.get("smooth", 0) or 0)
+        submit_model.majority_filter = int(best.get("majority", 0) or 0)
+        submit_model.majority_iters = int(best.get("majority_iters", 1) or 1)
+        submit_model.demote_min_px = int(best.get("demote", 0) or 0)
         saved = submit_model.save(current)
         weights["bs_mode"] = "model"
         weights["severity_model"] = saved.name
         chosen_params = submit.get("params", bs_params)
         weights.setdefault("bs", {})["min_patch_px"] = chosen_params.min_patch_px
         weights.setdefault("bs", {})["fill_holes_mask"] = chosen_params.fill_holes_mask
+        weights.setdefault("bs", {})["proba_smooth"] = submit_model.proba_smooth
+        weights.setdefault("bs", {})["majority_filter"] = submit_model.majority_filter
+        weights.setdefault("bs", {})["demote_min_px"] = submit_model.demote_min_px
         weights.setdefault("train_metrics", {})["bs_severity_model"] = submit_model.metrics
         weights["train_metrics"]["severity_loop"] = {
             "cycle": submit["cycle"], "name": submit["name"], "device": device,
             "iou_burn": submit["iou_burn"], "miou_sev": submit["miou_sev"],
-            "projected_score": submit["score"],
+            "projected_score": submit["score"], "smooth": submit_model.proba_smooth,
+            "majority": submit_model.majority_filter,
+            "demote": submit_model.demote_min_px,
         }
         save_weights(weights, out_path)
         print(f"модель записана: {saved}")
