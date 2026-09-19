@@ -54,6 +54,13 @@ def _load_solution(weights_path: Path | None, device: str | None = None):
 
         blob_filter = BlobFilter.load(base / weights["blob_filter"])
     severity_model = None
+    if weights.get("bs_mode") == "model" and not weights.get("severity_model"):
+        # Так выглядит испорченный weights.json: режим «модель», а имени файла нет — решение
+        # молча уходит на пороги dNBR и теряет ~0.05 Score. Лучше сказать об этом громко.
+        print("[!] weights.json в режиме «model», но поле severity_model пустое — это признак "
+              "перезаписанных весов.\n    Решение сейчас считает по порогам dNBR (хуже на "
+              "несколько сотых Score).\n    Верните файл weights/weights.json из репозитория.",
+              file=sys.stderr)
     if weights.get("bs_mode") == "model" and weights.get("severity_model"):
         from fires.severity import SeverityModel
 
