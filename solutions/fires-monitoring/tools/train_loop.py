@@ -928,13 +928,17 @@ def main(argv: list[str] | None = None) -> int:
         print("ни один цикл не отработал")
         return 1
     submit = final or best          # на сабмит идёт модель, обученная на всех чипах, если она есть
+    # Если ни один шаг не подтвердил улучшения, на сабмит должна идти прежняя модель из весов: иначе
+    # --strict мог бы «сохранить» конфигурацию первого шага, которая хуже исходной.
+    baseline_wins = (baseline is not None and base_model is not None
+                     and best["objective"] <= baseline["objective"] + IMPROVEMENT_EPS)
     best_model: sev.SeverityModel = best["model"]
     report = {"device": device, "f1_af": f1_af, "f1_source": f1_source,
               "af_tune": af_history,
               "baseline": baseline, "best": {"cycle": best["cycle"], "name": best["name"],
                                              "iou_burn": best["iou_burn"], "miou_sev": best["miou_sev"],
                                              "projected_score": best["score"]},
-              "cycles": results}
+              "baseline_wins": bool(baseline_wins), "cycles": results}
     if final is not None:
         report["final"] = {"cycle": final["cycle"], "name": final["name"],
                            "iou_burn": final["iou_burn"], "miou_sev": final["miou_sev"],
@@ -947,10 +951,13 @@ def main(argv: list[str] | None = None) -> int:
               f"→ стало IoU={best['iou_burn']:.4f} mIoU={best['miou_sev']:.4f}")
         print(f"проекция Score на отложенной части: {base_projection:.5f} → {best['score']:.5f} "
               f"({best['score'] - base_projection:+.5f}) — это ожидаемый прирост на платформе")
-    if final is not None:
+    if final is not None and not baseline_wins:
         print(f"модель для сабмита (обучена на всех {len(bs_train) + len(bs_val)} BS-чипах): "
               f"IoU={final['iou_burn']:.4f} mIoU={final['miou_sev']:.4f} "
               f"проекция Score={final['score']:.5f} (оценка оптимистична: эти чипы она видела)")
+    elif baseline_wins and baseline is not None:
+        print(f"на сабмит остаётся прежняя модель из весов: IoU={baseline['iou_burn']:.4f} "
+              f"mIoU={baseline['miou_sev']:.4f} проекция Score={base_projection:.5f}")
 
     if not args.quick:
         print("\n=== Контроль на всём обучающем наборе (224 BS-чипа) ===")
@@ -986,9 +993,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n    отложенных чипов мало ({len(val_cache)}): разница с точкой отсчёта сравнима\n"
               f"    с шумом выборки, к выбору лучшего варианта стоит относиться осторожно")
 
+    if baseline_wins:
+        print("\nНИ ОДИН ШАГ НЕ ПОДТВЕРДИЛ УЛУЧШЕНИЯ по сравнению с моделью из весов.\n"
+              "    Это нормальный исход: значит текущая модель уже лучше всего, что нашёл перебор.\n"
+              "    На сабмит идёт прежняя модель, файлы в weights не тронуты — пересобирать ничего "
+              "не нужно.")
+
     # смещения классов должны попасть в файл модели: иначе инференс их не применит
     best_model.class_bias = None if best.get("bias") is None else tuple(best["bias"])
-    if args.save:
+    if args.save and not baseline_wins:
         out_path = Path(args.out)
         prev = out_path.with_name("severity_model.prev.pkl")
         current = out_path.with_name(weights.get("severity_model") or "severity_model.pkl")
