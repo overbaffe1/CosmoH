@@ -470,7 +470,9 @@ def _eval_model(dataset: Dataset, args, bs_train: list[str], bs_val: list[str]) 
     f1_af = (weights.get("train_metrics") or {}).get("af_val_f1")
     print(f"модель: {args.eval_model}  ({model.describe() if hasattr(model, 'describe') else ''})")
     print(f"постобработка из модели: {model.describe()}")
-    for title, ids in (("отложенная часть (честно)", bs_val), ("все чипы (оптимистично)", bs_train + bs_val)):
+    for title, ids in (("отложенная часть (честно)", bs_val),
+                       ("обучающие чипы (обе модели видели их)", bs_train),
+                       ("все чипы (оптимистично)", bs_train + bs_val)):
         metrics = evaluate_bs(dataset, ids, bs_params, severity_model=model)
         iou, miou = metrics["iou_burn"], metrics["miou_sev"]
         line = (f"{title:28s} n={len(ids):3d}  IoU_burn={iou:.4f}  mIoU_sev={miou:.4f}  "

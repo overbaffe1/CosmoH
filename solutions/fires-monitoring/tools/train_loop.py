@@ -1092,6 +1092,12 @@ def main(argv: list[str] | None = None) -> int:
             backup = out_path.with_name(out_path.stem + ".prev.json")
             backup.write_text(out_path.read_text(encoding="utf-8"), encoding="utf-8")
             print(f"прежние веса сохранены: {backup}")
+        # отдельно кладём модель, обученную только на обучающей части: на всех 224 чипах её можно
+        # сравнивать с прежней моделью «на равных» (обе учились на одних и тех же 168 чипах)
+        best_train_file = out_path.with_name("severity_model.best_train.pkl")
+        best_model.save(best_train_file)
+        print(f"модель лучшего шага (обучена на {len(bs_train)} чипах) сохранена: {best_train_file}")
+
         save_weights(weights, out_path)
         print(f"модель записана: {saved}")
         print(f"веса обновлены: {out_path}")
