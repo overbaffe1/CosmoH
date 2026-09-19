@@ -26,3 +26,16 @@ def test_showcase_planner_and_material_routes_are_separate_and_whitelisted():
     assert c.get('/materials/PRESENTATION.pdf').headers['content-type']=='application/pdf'
     for filename in ['numbers.json','../fuel/api.py','unknown.txt']:
         assert c.get('/materials/'+filename).status_code==404
+
+
+def test_theme_and_plain_language_help_are_available_offline():
+    c=TestClient(app)
+    for route in ['/', '/planner']:
+        page=c.get(route).text
+        assert '/assets/theme.js' in page and 'id="themeToggle"' in page
+    home=c.get('/').text
+    for component in ['plainGuide','decisionMeaning','chartData','resetView']:
+        assert f'id="{component}"' in home
+    assert 'data-mode="prepared_base"' in home
+    theme=c.get('/assets/theme.js')
+    assert theme.status_code==200 and 'localStorage' in theme.text and 'catch' in theme.text
