@@ -239,9 +239,11 @@ def _cuda_dll_dirs() -> list[str]:
         pass
     dirs: list[str] = []
     for base in roots:
-        for pattern in ("nvidia/*/bin", "nvidia/cuda_runtime/bin", "nvidia/*/lib", "nvidia/*/lib/x64"):
+        for pattern in ("nvidia/*/bin", "nvidia/*/lib", "nvidia/*/lib/x64"):
             dirs.extend(glob.glob(os.path.join(base, pattern)))
-    return sorted({d for d in dirs if os.path.isdir(d)})
+    # нормpath: glob по маске с «/» на Windows отдаёт смешанные разделители, а add_dll_directory
+    # такие пути принимает не всегда
+    return sorted({os.path.normpath(d) for d in dirs if os.path.isdir(d)})
 
 
 def _add_cuda_dll_dirs() -> list[str]:
@@ -289,7 +291,72 @@ def _nvidia_smi() -> dict:
     return info
 
 
-def _probe_cuda(xgb) -> tuple[bool, str]:
+def _cuda_libraries() -> dict:
+    """Какие CUDA-библиотеки реально загружаются, а какие нет.
+
+    Отделяет три разные причины «CUDA не работает»: нет драйвера (не грузится ``nvcuda``),
+    нет рантайма (не грузится ``cudart``) или всё на месте, но xgboost всё равно уходит на CPU.
+    """
+
+    import ctypes
+
+    names = (["nvcuda.dll", "cudart64_12.dll", "cudart64_13.dll", "cublas64_12.dll",
+              "cublasLt64_12.dll", "nvrtc64_120_0.dll"]
+             if os.name == "nt" else
+             ["libcuda.so.1", "libcudart.so.12", "libcudart.so.13", "libcublas.so.12"])
+    out: dict[str, str] = {}
+    for name in names:
+        try:
+            ctypes.CDLL(name)
+            out[name] = "загружается"
+        except OSError as exc:
+            text = str(exc).splitlines()[0][:80] if str(exc) else exc.__class__.__name__
+            out[name] = f"нет ({text})"
+    return out
+
+
+class _CaptureCppOutput:
+    """Ловит вывод xgboost на уровне файловых дескрипторов.
+
+    Сообщения C++ (в том числе «No visible GPU is found») идут мимо ``sys.stderr``, поэтому
+    обычный ``redirect_stderr`` их не видит. Здесь fd 1 и 2 временно указывают на временный файл.
+    """
+
+    def __enter__(self):
+        import tempfile
+
+        self._saved: list[tuple[int, int]] = []
+        self._file = tempfile.TemporaryFile()
+        for fd in (1, 2):
+            try:
+                self._saved.append((fd, os.dup(fd)))
+            except OSError:
+                continue
+            try:
+                os.dup2(self._file.fileno(), fd)
+            except OSError:
+                pass
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        for fd, copy in self._saved:
+            try:
+                os.dup2(copy, fd)
+                os.close(copy)
+            except OSError:
+                pass
+        try:
+            self._file.seek(0)
+            raw = self._file.read().decode("utf-8", "replace")
+        finally:
+            self._file.close()
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        key = [ln for ln in lines if any(word in ln for word in ("WARNING", "GPU", "CUDA", "device"))]
+        self.text = " ".join(key or lines[:2])[:400]
+        return False
+
+
+def _probe_cuda(xgb, verbose: bool = False) -> tuple[bool, str]:
     """Однократная проба: обучение на device="cuda" и чтение устройства из конфига бустера."""
 
     import contextlib
@@ -300,9 +367,11 @@ def _probe_cuda(xgb) -> tuple[bool, str]:
     x = rng.random((64, 3), dtype=np.float32)
     y = (x[:, 0] > 0.5).astype(np.int32)
     stderr = io.StringIO()
+    captured = _CaptureCppOutput()
     try:
-        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda", verbosity=0)
-        with contextlib.redirect_stderr(stderr):
+        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda",
+                                  verbosity=2 if verbose else 0)
+        with contextlib.redirect_stderr(stderr), captured:
             probe.fit(x, y)
         used = re.search(r'"device"\s*:\s*"([a-z]+)"', probe.get_booster().save_config())
         if used and used.group(1) == "cuda":
@@ -311,9 +380,9 @@ def _probe_cuda(xgb) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
     finally:
-        text = stderr.getvalue().strip().replace("\n", " ")
+        text = " ".join((getattr(captured, "text", "") + " " + stderr.getvalue()).split())
         if text:
-            _DEVICE_CACHE["xgboost_warning"] = text[:300]
+            _DEVICE_CACHE["xgboost_warning"] = text[:400]
 
 
 def gpu_report() -> dict:
@@ -361,10 +430,18 @@ def gpu_report() -> dict:
         hint = ("проверьте драйвер: nvidia-smi должен показать карту; если команды нет — "
                 "поставьте драйвер NVIDIA, если есть — обновите его")
         reason = f"{reason} ({hint})"
+        # подробная проба: xgboost с verbosity=2 сам называет причину (нет DLL, нет устройства,
+        # несовпадение версий) — это точнее любых догадок
+        _, detailed = _probe_cuda(xgb, verbose=True)
+        if detailed:
+            reason += f". Подробный ответ xgboost: {detailed}"
         warning = _DEVICE_CACHE.get("xgboost_warning")
         if warning:
             reason += f". Сообщение xgboost: {warning}"
     info["cuda_dll_dirs"] = info.get("cuda_dll_dirs") or _cuda_dll_dirs()
+    info["cuda_libraries"] = _cuda_libraries()
+    if os.environ.get("CUDA_VISIBLE_DEVICES"):
+        info["cuda_visible_devices"] = os.environ["CUDA_VISIBLE_DEVICES"]
     info.update({k: v for k, v in _nvidia_smi().items() if k not in info or info[k] is None})
     _DEVICE_CACHE["runtime"] = "cuda" if info["runtime_ok"] else "cpu"
     _DEVICE_CACHE["reason"] = reason

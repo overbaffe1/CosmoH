@@ -529,11 +529,25 @@ def main(argv: list[str] | None = None) -> int:
     if not args.data_dir:
         ap.error("нужен --data-dir (или запустите с --gpu-report, чтобы только проверить GPU)")
 
+    # Защита от порчи весов: путь мог прийти испорченным кавычками (cmd легко склеивает
+    # «""C:\путь" --eval-model ...» в один аргумент), а обучение на нуле чипов раньше
+    # спокойно дописывало weights.json пустым конфигом — и модель «терялась».
+    if not Path(args.data_dir).exists():
+        print(f"каталог не найден: {args.data_dir!r}\n"
+              f"    веса не тронуты. Проверьте кавычки: --data-dir \"C:\\путь\\train\"\n"
+              f"    если в пути есть пробелы, кавычки нужны одинарные, без удвоения")
+        return 1
+
     if args.fast:
         AF_GRID.update({k: v[:2] for k, v in AF_GRID.items()})
         BS_GRID.update({k: v[:2] for k, v in BS_GRID.items()})
 
     dataset = Dataset(args.data_dir)
+    if not dataset.chip_ids():
+        print(f"в каталоге {args.data_dir!r} не нашлось ни одного чипа — веса не тронуты.\n"
+              f"    что видит решение: py -3 -m fires.chips --data-dir \"{args.data_dir}\"\n"
+              f"    нужен каталог, внутри которого папки af и bs с чипами и meta.csv")
+        return 1
     af_train, af_val = _split_ids(dataset, "af", args.val_frac, args.seed)
     bs_train, bs_val = _split_ids(dataset, "bs", args.val_frac, args.seed)
 
