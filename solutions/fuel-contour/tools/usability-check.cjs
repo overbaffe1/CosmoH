@@ -3,7 +3,7 @@ const {chromium:pw}=require('playwright-core');
 const chromium=require('@sparticuz/chromium');
 const axe=require('axe-core');const fs=require('fs');const path=require('path');
 (async()=>{
- const root=path.resolve(__dirname,'..'),base=process.env.SHOWCASE_URL||'http://127.0.0.1:8000';
+ const root=path.resolve(__dirname,'..'),base=process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo';
  const browser=await pw.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:1080}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const check=(ok,message)=>{if(!ok)throw Error(message)};
@@ -21,7 +21,7 @@ const axe=require('axe-core');const fs=require('fs');const path=require('path');
   await page.screenshot({path:path.join(root,`results/showcase-${theme}.png`),fullPage:true});
  }
  await page.reload();check(await page.locator('html').getAttribute('data-theme')==='dark','Theme did not persist');
- await page.goto(base+'/planner');check(await page.locator('html').getAttribute('data-theme')==='dark','Planner lost theme');
+ await page.goto(new URL('/planner',base).href);check(await page.locator('html').getAttribute('data-theme')==='dark','Planner lost theme');
  await page.locator('#themeToggle').click();await page.goto(base);
  await page.waitForFunction(()=>document.querySelector('#appStatus').textContent.startsWith('Рассчитано'));
  check(await page.locator('html').getAttribute('data-theme')==='light','Shared preference not restored');
@@ -40,18 +40,12 @@ const axe=require('axe-core');const fs=require('fs');const path=require('path');
  }
  await page.setViewportSize({width:1440,height:1080});await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await page.waitForFunction(()=>scrollY===0);
  await page.screenshot({path:path.join(root,'results/showcase-light-viewport.png')});
- await page.goto(base+'/presentation');await page.locator('#slidePicker').selectOption('8');
- check(await page.locator('#slideCount').textContent()==='9 / 12','Slide picker broken');
- await page.locator('#notesToggle').click();
- check(await page.locator('#speakerPanel').isVisible(),'Speaker notes not visible');
- check((await page.locator('[data-note="8"]').textContent()).includes('ЧТО СКАЗАТЬ'),'No spoken script');
- await page.keyboard.press('Escape');check(!(await page.locator('#speakerPanel').isVisible()),'Escape did not close notes');
- await page.locator('#slidePicker').selectOption('2');
+ await page.goto(new URL('/presentation',base).href);await page.locator('#slidePicker').selectOption('2');
+ check(await page.locator('#slideCount').textContent()==='3 / 8','Slide picker broken');
+ check(await page.locator('#notesToggle').count()===0&&await page.locator('#speakerPanel').count()===0,'Presenter prompt must not be in audience deck');
  await page.screenshot({path:path.join(root,'results/presentation-process.png')});
  await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth);
- check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Deck mobile overflow');
- await page.emulateMedia({media:'print'});check(await page.locator('article:visible').count()===12,'Print must contain all slides');
- check(!(await page.locator('#speakerPanel').isVisible()),'Notes leaked into print');
+ await page.emulateMedia({media:'print'});check(await page.locator('article:visible').count()===8,'Print must contain 8 audience slides');
  // A privacy-restricted browser must still boot, with in-memory theme switching.
  const restricted=await browser.newContext();await restricted.addInitScript(()=>{Storage.prototype.getItem=()=>{throw Error('Storage blocked')};Storage.prototype.setItem=()=>{throw Error('Storage blocked')};});
  const offline=await restricted.newPage();offline.on('pageerror',e=>errors.push(e.message));await offline.goto(base);await offline.locator('#themeToggle').click();
@@ -59,5 +53,5 @@ const axe=require('axe-core');const fs=require('fs');const path=require('path');
  fs.writeFileSync(path.join(root,'results/accessibility.json'),JSON.stringify(audits,null,2));
  const failures=audits.flatMap(a=>a.violations.filter(v=>['serious','critical'].includes(v.impact)).map(v=>`${a.theme}: ${v.id} (${v.nodes.length})`));
  await browser.close();check(!errors.length,errors.join('\n'));check(!failures.length,failures.join('\n'));
- console.log('PASS usability: themes/persistence/privacy, explanations, data tables, responsive, slide picker/notes/print; axe serious/critical: 0');
+ console.log('PASS usability: themes/persistence/privacy, explanations, data tables, responsive, slide picker/no prompts/print; axe serious/critical: 0');
 })().catch(e=>{console.error(e);process.exit(1)});

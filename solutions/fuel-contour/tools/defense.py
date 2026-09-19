@@ -169,19 +169,12 @@ CHAIN_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="270"
 
 def write_assets(summary, dest=None):
     dest = Path(dest or ROOT/'docs');dest.mkdir(parents=True, exist_ok=True)
-    slides = slides_for(summary)
-    from tools.evidence_publish import enrich_slides
-    slides = enrich_slides(slides, summary)
+    from tools.talk import short_defense, write_script
+    slides = short_defense(summary)
     from tools.deck_design import render_deck
     (dest/'PRESENTATION.html').write_text(render_deck(slides),encoding='utf-8')
     (dest/'SUPPLY_CHAIN.svg').write_text(CHAIN_SVG,encoding='utf-8')
-    notes=['# Слова к слайдам — для выступающего, не для чтения с экрана',
-           '\nРепетиционная версия на 7 минут, не официальный регламент. Уточните лимит времени у организаторов. '+
-           'Вопросы и развёрнутый показ интерфейса — отдельно. При лимите 5 минут сокращайте пояснения, не скрывайте результаты стресса.',
-           '\nЧисла и слайды генерируются из одного suite. SHA256 summary: `'+digest(summary)+'`.\n']
-    for i,slide in enumerate(slides,1):
-        notes.append(f'## {i}. {slide["title"]} — {slide["seconds"]} секунд\n\n{slide["notes"]}\n')
-    (dest/'SPEAKER_NOTES.md').write_text('\n'.join(notes),encoding='utf-8')
+    write_script(slides,dest)
     brief=decision_brief(summary)
     (dest/'DECISION_BRIEF.json').write_text(json.dumps(brief,ensure_ascii=False,indent=2,allow_nan=False)+'\n',encoding='utf-8')
     (dest/'PRESENTATION_DATA.json').write_text(json.dumps({'summary_sha256':digest(summary),'slides':slides},ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
@@ -197,4 +190,4 @@ if __name__=='__main__':
     summary=json.loads((ROOT/'results/summary.json').read_text())
     slides=write_assets(summary)
     if '--pptx' in sys.argv:write_pptx(slides)
-    print('Built 12-slide defense, supply-chain diagram, speaker notes and decision evidence')
+    print('Built 8-slide defense, separate 4-minute speech and decision evidence')

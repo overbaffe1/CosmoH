@@ -60,6 +60,10 @@ def guarded(fn):
 
 @app.get('/')
 def index():
+    return FileResponse(ROOT/'web/calculator.html')
+
+@app.get('/demo')
+def demonstration():
     return FileResponse(ROOT/'web/showcase.html')
 
 @app.get('/api/case')
@@ -133,6 +137,7 @@ def planner():
     return FileResponse(ROOT/'web/index.html')
 
 
+@app.get('/evidence/')
 @app.get('/evidence')
 def evidence_gallery():
     return FileResponse(ROOT/'docs/EVIDENCE.html')
@@ -146,7 +151,7 @@ def presentation():
 @app.get('/materials/{name}')
 def material(name: str):
     allowed = {'REPORT.pdf','COMPARISON.pdf','PRESENTATION.pdf','PRESENTATION.pptx',
-               'DEFENSE_GUIDE.md','SPEAKER_NOTES.md','RECOURSE.md'}
+               'DEFENSE_GUIDE.md','SPEAKER_NOTES.md','TALK_4_MIN.txt','RECOURSE.md'}
     if name not in allowed or not (ROOT/'docs'/name).is_file():
         raise HTTPException(404, 'Unknown material')
     return FileResponse(ROOT/'docs'/name, filename=name)

@@ -4,7 +4,7 @@ const {chromium:pw}=require('playwright-core');const chromium=require('@sparticu
  const root=path.resolve(__dirname,'..');fs.mkdirSync(path.join(root,'results'),{recursive:true});
  const browser=await pw.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:1080},acceptDownloads:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.SHOWCASE_URL||'http://127.0.0.1:8000');
+ await page.goto(process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo');
  await page.waitForFunction(()=>document.querySelector('#appStatus').textContent.startsWith('Рассчитано'));
  if(!(await page.locator('#kpis').textContent()).includes('10 829,68'))throw Error('Baseline number missing');
  await page.screenshot({path:path.join(root,'results/showcase-desktop.png'),fullPage:true});
@@ -38,15 +38,15 @@ const {chromium:pw}=require('playwright-core');const chromium=require('@sparticu
  await page.screenshot({path:path.join(root,'results/showcase-mobile.png'),fullPage:true});
  if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Mobile page overflow');
  await page.setViewportSize({width:1440,height:960});
- await page.goto(new URL('/presentation',process.env.SHOWCASE_URL||'http://127.0.0.1:8000').href);
+ await page.goto(new URL('/presentation',process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo').href);
  await page.waitForSelector('.deck-ready');
  if((await page.locator('article:visible').count())!==1)throw Error('Presentation must show one slide');
  await page.locator('#nextSlide').click();await page.keyboard.press('ArrowRight');
- if((await page.locator('#slideCount').textContent())!=='3 / 12')throw Error('Slide navigation failed');
- await page.keyboard.press('End');if((await page.locator('#slideCount').textContent())!=='12 / 12')throw Error('Slide End key failed');
+ if((await page.locator('#slideCount').textContent())!=='3 / 8')throw Error('Slide navigation failed');
+ await page.keyboard.press('End');if((await page.locator('#slideCount').textContent())!=='8 / 8')throw Error('Slide End key failed');
  await page.keyboard.press('Home');
  await page.screenshot({path:path.join(root,'results/presentation-browser.png')});
- await page.goto(new URL('/evidence',process.env.SHOWCASE_URL||'http://127.0.0.1:8000').href);
+ await page.goto(new URL('/evidence',process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo').href);
  await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth>0));
  if((await page.locator('img').count())!==5)throw Error('Evidence screenshots missing');
  await page.screenshot({path:path.join(root,'results/evidence-gallery.png'),fullPage:true});

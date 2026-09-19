@@ -8,7 +8,7 @@ function statistics(values){const sorted=[...values].sort((a,b)=>a-b),q=p=>sorte
 (async()=>{
  fs.mkdirSync(dest,{recursive:true});const browser=await pw.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:1080}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- const url=process.env.SHOWCASE_URL||'http://127.0.0.1:8000';await page.goto(url);
+ const url=process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo';await page.goto(url);
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.waitForFunction(()=>document.querySelector('#appStatus').textContent.startsWith('Рассчитано'));
  const expectedResponse=JSON.parse(fs.readFileSync(path.join(root,'results/recourse/delay-90.json'))).after.summary;

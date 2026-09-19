@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Космоконтур — лаборатория расчёта</title>
+    <script src="/assets/theme.js"></script>
+    <link rel="stylesheet" href="/assets/calculator.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/"
+        >✧ КОСМОКОНТУР <small>ЛАБОРАТОРИЯ РАСЧЁТА</small></a
+      >
+      <nav aria-label="Разделы">
+        <a href="/evidence">Доказательства</a
+        ><a href="/presentation">Презентация</a
+        ><a href="/planner">Расширенный редактор</a
+        ><button id="themeToggle">Тема</button>
+      </nav>
+    </header>
+    <main>
+      <div class="page-title">
+        <div>
+          <span class="eyebrow">ВАШИ УСЛОВИЯ → ВАШ РЕЗУЛЬТАТ</span>
+          <h1>Рассчитайте план снабжения.</h1>
+          <p>
+            Измените спрос, поставки или инвестиции. Проверим, хватит ли
+            топлива, времени и денег.
+          </p>
+        </div>
+        <a href="/materials/TALK_4_MIN.txt" class="text-link"
+          >Речь на 4 минуты ↓</a
+        >
+      </div>
+      <div class="project-bar">
+        <label
+          >Начать с плана<select id="preset">
+            <option value="lunar">Земля + лунный канал</option>
+            <option value="earth">Только земные каналы</option>
+            <option value="lunar-stress">
+              Лунный, подготовленный под стресс
+            </option>
+            <option value="earth-stress">
+              Земной, подготовленный под стресс
+            </option>
+          </select></label
+        ><button id="loadPlan">Загрузить основу</button
+        ><span
+          >Основа — только начальные значения. Дальше всё редактируется.</span
+        ><button id="saveProject">Сохранить проект</button
+        ><button id="openProject">Открыть</button
+        ><input id="projectFile" type="file" accept=".json" hidden />
+      </div>
+      <div id="message" role="status" aria-live="polite">
+        Загружаем входные данные…
+      </div>
+      <div class="workspace">
+        <form id="calculator" novalidate>
+          <fieldset id="inputFields" disabled>
+            <section class="panel">
+              <div class="section-title">
+                <span>01</span>
+                <div>
+                  <h2>Условия расчёта</h2>
+                  <p>
+                    Контрольные правила не меняем. Свои условия считаем
+                    отдельно.
+                  </p>
+                </div>
+              </div>
+              <div class="fields">
+                <label
+                  >Среда<select id="environment">
+                    <option value="BASE">Обычные условия организатора</option>
+                    <option value="MANDATORY_STRESS">
+                      Обязательный стресс организатора
+                    </option>
+                    <option value="CUSTOM">
+                      Мои условия — исследовательский сценарий
+                    </option>
+                  </select></label
+                ><label
+                  >Начальный запас, т<input
+                    id="openingStock"
+                    type="number"
+                    min="0"
+                    step="any"
+                    required /></label
+                ><label
+                  >Реальная годовая ставка, %<input
+                    id="discountRate"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="any"
+                    required
+                /></label>
+              </div>
+              <p class="hint" id="environmentHelp">
+                Меняется только среда. Заказы и инвестиции остаются вашими.
+              </p>
+              <div id="customConditions" hidden>
+                <label
+                  >Почему выбраны такие условия?<input
+                    id="basis"
+                    value="Исследую собственные условия снабжения"
+                    maxlength="400"
+                    required
+                /></label>
+                <div class="subhead">
+                  <h3>Спрос по годам, т</h3>
+                  <span
+                    >Критический спрос — часть общего, не прибавляется
+                    сверху.</span
+                  >
+                </div>
+                <div class="table-wrap" id="demandInputs"></div>
+                <div class="subhead">
+                  <h3>Изменения поставок и цен</h3>
+                  <label
+                    >Когда действуют<select id="shockYear">
+                      <option value="all">Все годы</option>
+                    </select></label
+                  >
+                </div>
+                <div class="table-wrap" id="shockInputs"></div>
+                <p class="hint">
+                  100% исполнения — заказ приходит полностью, 0% — не приходит.
+                  При этом оплата заказа не отменяется. ×1 — контрольная цена.
+                </p>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="section-title">
+                <span>02</span>
+                <div>
+                  <h2>Мои заказы и договоры</h2>
+                  <p>
+                    Меняйте значения прямо в таблице. Отдельно «применять»
+                    каждую строку не нужно.
+                  </p>
+                </div>
+              </div>
+              <div class="subhead">
+                <label>Год поставки<select id="contractYear"></select></label
+                ><span>Изменения сохраняются при переключении года.</span>
+              </div>
+              <div class="table-wrap" id="orderInputs"></div>
+              <details>
+                <summary>Даты и условия: как читать таблицу</summary>
+                <p>
+                  Начало и конец — дни внутри выбранного года (1–365). Дата
+                  заказа — сутки от начала 2035: 0 означает начало 2035, 365 —
+                  начало 2036. Отрицательная дата — подготовка до горизонта.
+                  Резерв мощности — договор с поставщиком, не физический запас в
+                  баке. Слишком поздние заказы и превышение мощности станут
+                  нарушениями, а не будут исправлены скрыто.
+                </p>
+              </details>
+            </section>
+            <section class="panel">
+              <div class="section-title">
+                <span>03</span>
+                <div>
+                  <h2>Инфраструктура и инвестиции</h2>
+                  <p>
+                    Включение канала не строит его мгновенно. Укажите оплату и
+                    ввод.
+                  </p>
+                </div>
+              </div>
+              <div id="investmentInputs"></div>
+              <p class="hint">
+                Сроки в сутках от начала 2035. Стоимость и лимиты — исходные
+                данные организатора. Модель покажет нарушения бюджета или
+                слишком ранний ввод.
+              </p>
+            </section>
+            <div class="run-bar">
+              <button class="primary" id="calculate" type="submit">
+                Рассчитать мой план →</button
+              ><span
+                >Один запуск — весь период 2035–2040.<br />Изменения не
+                отправляются, пока вы не нажмёте кнопку.</span
+              >
+            </div>
+          </fieldset>
+        </form>
+        <aside class="result-side">
+          <section class="panel result-panel">
+            <div class="result-heading">
+              <span class="eyebrow">РЕЗУЛЬТАТ РАСЧЁТА</span
+              ><span id="resultState" class="badge">Ещё не рассчитано</span>
+            </div>
+            <div id="resultEmpty">
+              <h2>Сначала задайте условия.</h2>
+              <p>
+                Затем нажмите «Рассчитать мой план». Здесь появятся стоимость,
+                нехватка топлива и причины нарушений.
+              </p>
+              <div class="formula">
+                Запас + поставки − потери − выдача<br /><b>= остаток в баке</b>
+              </div>
+            </div>
+            <div id="resultContent" hidden>
+              <div id="resultMetrics" class="metrics"></div>
+              <p id="conclusion"></p>
+              <p id="resultBasis" class="hint"></p>
+              <div id="previousComparison" class="comparison" hidden></div>
+              <div class="result-actions">
+                <button id="exportResult" disabled>Скачать расчёт · ZIP</button
+                ><button id="pinResult" disabled>
+                  Зафиксировать для сравнения
+                </button>
+              </div>
+              <p class="hint">
+                В ZIP: результат JSON, входы, CSV и таблицы XLSX. Расходы в млн
+                постоянных у.е. 2035, не рубли и не прибыль.
+              </p>
+            </div>
+          </section>
+          <section class="panel help">
+            <h3>Что мы проверяем</h3>
+            <ul>
+              <li>Доставка до потребления, потери и ёмкость.</li>
+              <li>Резерв, обслуживание клиентов по годам.</li>
+              <li>Мощности, сроки договоров, ввод и бюджет.</li>
+            </ul>
+            <p>
+              Это калькулятор последствий вашего решения, не поиск
+              гарантированно оптимального плана.
+            </p>
+            <a href="/evidence">Как проверена модель →</a>
+          </section>
+        </aside>
+      </div>
+      <section id="resultDetails" hidden>
+        <div class="detail-heading">
+          <h2>Что получилось по годам</h2>
+          <span id="detailState"></span>
+        </div>
+        <div class="charts">
+          <section class="panel">
+            <h3>Спрос и реально выданное топливо</h3>
+            <div id="demandPlot"></div>
+          </section>
+          <section class="panel">
+            <h3>Как менялся физический запас</h3>
+            <div id="stockPlot"></div>
+          </section>
+        </div>
+        <section class="panel">
+          <h3>Баланс</h3>
+          <div class="table-wrap" id="balanceTable"></div>
+        </section>
+        <div class="charts">
+          <section class="panel">
+            <h3>Нарушения и причины</h3>
+            <div class="table-wrap" id="checksTable"></div>
+          </section>
+          <section class="panel">
+            <h3>Из чего сложилась стоимость</h3>
+            <div class="table-wrap" id="costTable"></div>
+          </section>
+        </div>
+      </section>
+      <footer>
+        <span
+          >CASE_INPUT — исходные правила · TEAM_DECISION — ваш план ·
+          TEAM_ASSUMPTION — ваши условия.</span
+        >
+        <p>
+          Учебная модель. Свои проверки и внешний валидатор разделены: в
+          источнике организатора отсутствует ERRATA_AND_PROVENANCE.md.
+        </p>
+        <a href="/demo">Готовые примеры — отдельно →</a>
+      </footer>
+    </main>
+    <script src="/assets/calculator.js" defer></script>
+  </body>
+</html>

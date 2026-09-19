@@ -90,7 +90,9 @@ def test_defense_generation_is_deterministic_and_does_not_mutate(tmp_path):
     a={p.name:p.read_bytes() for p in (tmp_path/'a').iterdir()}
     b={p.name:p.read_bytes() for p in (tmp_path/'b').iterdir()}
     assert a==b
-    assert a['PRESENTATION.html'].count(b'<article ')==12
+    assert a['PRESENTATION.html'].count(b'<article ')==8
+    assert b'notesToggle' not in a['PRESENTATION.html']
+    assert 'TALK_4_MIN.txt' in a
 
 
 def test_defense_stops_if_control_narrative_becomes_false():
@@ -122,6 +124,16 @@ def test_deck_has_spoken_story_and_source_driven_four_way_comparison():
         assert item=={'cost':source['total_cost_mln'],'shortage':source['shortage_t'],'violations':source['violations']}
     assert all('ЧТО СКАЗАТЬ' in slide['notes'] and slide['chapter'] for slide in slides)
     html=render_deck(slides)
-    assert 'slidePicker' in html and 'speakerPanel' in html and 'notesToggle' in html
-    assert html.count('data-note=')==12
-    assert '.speaker-panel{display:none!important}' in html
+    assert 'slidePicker' in html
+    assert 'speakerPanel' not in html and 'notesToggle' not in html
+
+
+def test_four_minute_deck_shows_stack_and_calculator_without_prompts():
+    from tools.talk import short_defense
+    from tools.deck_design import render_deck
+    slides=short_defense(summary_fixture())
+    assert len(slides)==8 and sum(s['seconds'] for s in slides)==240
+    assert slides[2]['visual']['type']=='lab'
+    assert 'FastAPI' in str(slides[1])
+    rendered=render_deck(slides)
+    assert 'Что говорить' not in rendered and 'data-note=' not in rendered
