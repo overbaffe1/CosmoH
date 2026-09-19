@@ -1,0 +1,8 @@
+{
+  "name": "cosmofire-defense-deck",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline slide export; not competition inference",
+  "scripts": { "pdf": "node render_pdf.cjs" },
+  "devDependencies": { "playwright": "1.51.0" }
+}

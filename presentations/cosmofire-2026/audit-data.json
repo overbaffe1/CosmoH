@@ -1,0 +1,25 @@
+{
+  "rows": 447,
+  "chips": 269,
+  "row_counts": {
+    "AF": 180,
+    "BS": 267
+  },
+  "pixel_counts": {
+    "AF": 4050,
+    "BS": 3883349
+  },
+  "shape_AF": [
+    256,
+    256
+  ],
+  "shape_BS": [
+    512,
+    512
+  ],
+  "structural_RLE_check": "PASS",
+  "template_identity_check": "NOT RUN: organizer template not present",
+  "sha256": "3d233c7df09661b39028b3e73c0af01936f7bafca87414ca12ca75f8376146a7",
+  "identical_to_TOPsubmission": false,
+  "identical_to_default_submission": false
+}

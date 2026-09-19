@@ -1,0 +1,60 @@
+{
+  "/api/health": {
+    "status": 200,
+    "bytes": 115
+  },
+  "/api/report": {
+    "status": 200,
+    "bytes": 310
+  },
+  "/api/burn-contours": {
+    "status": 200,
+    "bytes": 7854812
+  },
+  "/api/thermopoints": {
+    "status": 200,
+    "bytes": 1834850
+  },
+  "/api/export/contours.geojson": {
+    "status": 200,
+    "bytes": 8578900
+  },
+  "/api/export/contours.shp": {
+    "status": 200,
+    "bytes": 3528302
+  },
+  "/api/report?format=csv": {
+    "status": 200,
+    "bytes": 134
+  },
+  "report": {
+    "total_area_ha": 256520.04,
+    "by_severity_ha": {
+      "severity_1": 92675.04,
+      "severity_2": 107247.96,
+      "severity_3": 56597.04
+    },
+    "share_by_severity": {
+      "severity_1": 0.3613,
+      "severity_2": 0.4181,
+      "severity_3": 0.2206
+    },
+    "n_contours": 4892,
+    "n_thermopoints": 9478,
+    "catalog_mode": "geo",
+    "query": {
+      "bbox": null,
+      "date_from": null,
+      "date_to": null
+    }
+  },
+  "health": {
+    "status": "ok",
+    "catalog_mode": "geo",
+    "thermopoints": 9478,
+    "contours": 4892,
+    "generated_at": "2026-09-18T22:35:52+00:00"
+  },
+  "all_contours_are_train": true,
+  "all_thermopoints_are_train": true
+}
