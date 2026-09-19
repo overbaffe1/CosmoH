@@ -109,3 +109,19 @@ def test_visual_presentation_keeps_underlying_evidence_and_print_all_slides():
     assert html.count('<article ')==12
     if 'recourse' in s:
         assert slides[8]['visual']['items'][1]['value']==s['recourse'][1]['after']['shortage_t']
+
+
+def test_deck_has_spoken_story_and_source_driven_four_way_comparison():
+    from tools.defense import slides_for
+    from tools.deck_design import render_deck
+    s=summary_fixture();slides=slides_for(s)
+    assert slides[2]['visual']['type']=='process'
+    items=slides[6]['visual']['items']
+    assert len(items)==4
+    for item,source in zip(items,s['strategies']['lunar']['decision_comparison']['matrix']):
+        assert item=={'cost':source['total_cost_mln'],'shortage':source['shortage_t'],'violations':source['violations']}
+    assert all('ЧТО СКАЗАТЬ' in slide['notes'] and slide['chapter'] for slide in slides)
+    html=render_deck(slides)
+    assert 'slidePicker' in html and 'speakerPanel' in html and 'notesToggle' in html
+    assert html.count('data-note=')==12
+    assert '.speaker-panel{display:none!important}' in html
