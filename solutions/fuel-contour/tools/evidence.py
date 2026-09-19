@@ -36,7 +36,7 @@ def build(dest=None):
     save_json(dest/'response-grid.json',study)
     fields=['delivery_share','observed_after_days','before_shortage_t','after_shortage_t','before_violations','after_violations','added_order_t','incremental_cost_mln','action']
     with (dest/'response-grid.csv').open('w',newline='') as f:
-        w=csv.DictWriter(f,fieldnames=fields);w.writeheader()
+        w=csv.DictWriter(f,fieldnames=fields,lineterminator="\n");w.writeheader()
         for r in study['rows']:
             w.writerow({k:r[k] for k in fields if k in r}|{'before_shortage_t':r['before']['shortage_t'],'after_shortage_t':r['after']['shortage_t'],'before_violations':r['before']['violations'],'after_violations':r['after']['violations']})
     (dest/'response-grid.svg').write_text(heatmap(study))
