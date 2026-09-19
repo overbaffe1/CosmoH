@@ -1011,6 +1011,12 @@ def main(argv: list[str] | None = None) -> int:
             "majority": submit_model.majority_filter,
             "demote": submit_model.demote_min_px,
         }
+        # прежние веса сохраняем целиком: в них морфология, режим и правила AF, и без копии
+        # «вернуть прежнюю конфигурацию» не получится (модель вернём, а пороги уже другие)
+        if out_path.exists():
+            backup = out_path.with_name(out_path.stem + ".prev.json")
+            backup.write_text(out_path.read_text(encoding="utf-8"), encoding="utf-8")
+            print(f"прежние веса сохранены: {backup}")
         save_weights(weights, out_path)
         print(f"модель записана: {saved}")
         print(f"веса обновлены: {out_path}")

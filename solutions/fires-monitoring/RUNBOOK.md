@@ -189,8 +189,14 @@ py -3 train.py --data-dir <путь>\train --eval-model weights\severity_model.p
 иной результат на платформе, а не по памяти.
 
 Важно: с `--save` в `weights/` записывается именно модель для сабмита (обученная на всех чипах), прежняя
-остаётся рядом как `weights/severity_model.prev.pkl` — вернуться к ней можно копированием файла обратно
-в `severity_model.pkl`. Если модель собирали с xgboost, для инференса xgboost тоже нужен (он уже будет
+остаётся рядом как `weights/severity_model.prev.pkl`, а прежние веса — как `weights/weights.prev.json`.
+Вернуться к прошлой конфигурации — это две команды:
+
+```cmd
+copy /y weights\severity_model.pkl weights\severity_model.loop.pkl
+copy /y weights\severity_model.prev.pkl weights\severity_model.pkl
+rem и, если менялись пороги/морфология: copy /y weights\weights.prev.json weights\weights.json
+``` Если модель собирали с xgboost, для инференса xgboost тоже нужен (он уже будет
 установлен, раз GPU-путь использовался).
 
 Флаги: `--device auto|cpu|cuda` (по умолчанию `auto`), `--gpu-report` (что известно про CUDA и выйти),
