@@ -260,6 +260,16 @@ def _add_cuda_dll_dirs() -> list[str]:
     return dirs
 
 
+#: Сообщения, по которым xgboost сообщает, что GPU не задействован.
+_CUDA_FALLBACK_MARKS = (
+    "Device is changed from GPU to CPU",
+    "No visible GPU is found",
+    "no CUDA-capable device",
+    "GPU is not available",
+    "CUDA is not available",
+)
+
+
 def _nvidia_smi() -> dict:
     """Что говорит драйвер: есть ли ``nvidia-smi``, какая карта и версия драйвера.
 
@@ -315,74 +325,67 @@ def _cuda_libraries() -> dict:
     return out
 
 
-class _CaptureCppOutput:
-    """Ловит вывод xgboost на уровне файловых дескрипторов.
+def _probe_cuda(xgb, verbose: bool = True) -> tuple[bool, str]:
+    """Пробное обучение на ``device="cuda"``: работает ли CUDA здесь и сейчас.
 
-    Сообщения C++ (в том числе «No visible GPU is found») идут мимо ``sys.stderr``, поэтому
-    обычный ``redirect_stderr`` их не видит. Здесь fd 1 и 2 временно указывают на временный файл.
+    Признак отката берём у самого xgboost — он печатает «No visible GPU is found, setting device to
+    CPU» и «Device is changed from GPU to CPU». Проверка только по ``save_config`` давала ложный
+    минус на исправном GPU (в сборке 3.4 поле устройства в конфиге не отражает фактическое
+    устройство), поэтому смотрим и на конфиг, и на сообщения.
     """
-
-    def __enter__(self):
-        import tempfile
-
-        self._saved: list[tuple[int, int]] = []
-        self._file = tempfile.TemporaryFile()
-        for fd in (1, 2):
-            try:
-                self._saved.append((fd, os.dup(fd)))
-            except OSError:
-                continue
-            try:
-                os.dup2(self._file.fileno(), fd)
-            except OSError:
-                pass
-        return self
-
-    def __exit__(self, *exc) -> bool:
-        for fd, copy in self._saved:
-            try:
-                os.dup2(copy, fd)
-                os.close(copy)
-            except OSError:
-                pass
-        try:
-            self._file.seek(0)
-            raw = self._file.read().decode("utf-8", "replace")
-        finally:
-            self._file.close()
-        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        key = [ln for ln in lines if any(word in ln for word in ("WARNING", "GPU", "CUDA", "device"))]
-        self.text = " ".join(key or lines[:2])[:400]
-        return False
-
-
-def _probe_cuda(xgb, verbose: bool = False) -> tuple[bool, str]:
-    """Однократная проба: обучение на device="cuda" и чтение устройства из конфига бустера."""
 
     import contextlib
     import io
     import re
+    import warnings as _warnings
 
     rng = np.random.default_rng(0)
     x = rng.random((64, 3), dtype=np.float32)
     y = (x[:, 0] > 0.5).astype(np.int32)
-    stderr = io.StringIO()
-    captured = _CaptureCppOutput()
+    out, err = io.StringIO(), io.StringIO()
     try:
-        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda",
-                                  verbosity=2 if verbose else 0)
-        with contextlib.redirect_stderr(stderr), captured:
+        # verbosity=2 всегда: при тихом режиме xgboost молча уходит на CPU, и отличить
+        # настоящий GPU от отката невозможно (проверено на машине без видеокарты)
+        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda", verbosity=2)
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                _warnings.catch_warnings(record=True) as caught:
+            _warnings.simplefilter("always")
             probe.fit(x, y)
-        used = re.search(r'"device"\s*:\s*"([a-z]+)"', probe.get_booster().save_config())
-        if used and used.group(1) == "cuda":
+        raw = "\n".join([out.getvalue(), err.getvalue()]
+                        + [str(item.message) for item in caught])
+        text = " ".join(raw.split())
+        _DEVICE_CACHE["xgboost_warning"] = text[:400]
+        config = probe.get_booster().save_config()
+        found = re.search(r'"device"\s*:\s*"([^"]+)"', config)
+        in_config = bool(found) and found.group(1).lower().startswith("cuda")
+        fell_back = any(mark.lower() in text.lower() for mark in _CUDA_FALLBACK_MARKS)
+        if fell_back:
+            return False, _fallback_reason(raw)
+        # прямое подтверждение: GPU-структура данных xgboost (ellpack) или device=cuda в конфиге
+        if in_config or "ellpack" in text.lower():
             return True, ""
-        return False, "xgboost не включил CUDA-устройство"
+        return False, ("не удалось подтвердить, что обучение шло на GPU (xgboost не сказал об этом "
+                       "прямо) — считаем, что GPU нет")
     except Exception as exc:
         return False, f"{type(exc).__name__}: {exc}"
-    finally:
-        text = " ".join((getattr(captured, "text", "") + " " + stderr.getvalue()).split())
-        if text:
-            _DEVICE_CACHE["xgboost_warning"] = text[:400]
+
+
+def _fallback_reason(text: str) -> str:
+    """Самая содержательная строка из сообщений xgboost про откат на CPU."""
+
+    lines = [part.strip() for part in text.replace("UserWarning:", "\n").splitlines() if part.strip()]
+    hits = [line for line in lines
+            if any(mark.lower() in line.lower() for mark in _CUDA_FALLBACK_MARKS)]
+    for line in hits:
+        if "WARNING" in line.upper():
+            return line[:300]
+    if hits:
+        return hits[0][:300]
+    for mark in _CUDA_FALLBACK_MARKS:      # текст одной строкой: берём фрагмент вокруг маркера
+        position = text.lower().find(mark.lower())
+        if position >= 0:
+            return text[max(0, position - 60):position + 200].strip()
+    return "xgboost не включил CUDA-устройство"
 
 
 def gpu_report() -> dict:
@@ -419,7 +422,7 @@ def gpu_report() -> dict:
         # вторая попытка — с каталогами CUDA-библиотек из pip-пакета nvidia-* в путях поиска DLL
         added = _add_cuda_dll_dirs()
         if added:
-            again, why = _probe_cuda(xgb)
+            again, why = _probe_cuda(xgb, verbose=True)
             if again:
                 info["runtime_ok"], reason = True, ""
                 info["cuda_dll_dirs"] = added

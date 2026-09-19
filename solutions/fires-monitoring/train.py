@@ -514,16 +514,21 @@ def main(argv: list[str] | None = None) -> int:
         info["устройство"] = resolve_device("auto")
         print(_json.dumps(info, ensure_ascii=False, indent=2))
         if not info.get("runtime_ok"):
-            if info.get("nvidia_smi"):
-                print("\nДрайвер на месте (nvidia-smi найден). Что делать по порядку:\n"
-                      "  1) py -3 -m pip install --upgrade xgboost nvidia-cuda-runtime-cu12\n"
-                      "  2) py -3 train.py --gpu-report — если всё ещё false, добавьте каталоги из\n"
-                      "     поля cuda_dll_dirs в PATH (команда set PATH=...;%PATH%) и повторите\n"
-                      "  3) если не помогло — поставьте CUDA Toolkit 12 и обновите драйвер NVIDIA")
-            else:
-                print("\nДрайвер не найден (nvidia-smi нет в PATH) — это и есть причина.\n"
-                      "  Установите драйвер NVIDIA для RTX 3060, перезагрузитесь и повторите\n"
-                      "  py -3 train.py --gpu-report")
+            broken = [name for name, state in (info.get("cuda_libraries") or {}).items()
+                      if not str(state).startswith("загружается")]
+            print("\nЧто делать:")
+            if not info.get("nvidia_smi"):
+                print("  * драйвера не видно (nvidia-smi нет в PATH): поставьте драйвер NVIDIA "
+                      "для RTX 3060 и перезагрузитесь")
+            if broken:
+                print("  * не загружаются библиотеки: " + ", ".join(broken))
+                print("    py -3 -m pip install --upgrade nvidia-cuda-runtime-cu12 "
+                      "nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12")
+                print("    затем повторите py -3 train.py --gpu-report (каталоги этих пакетов решение "
+                      "подхватывает само)")
+            print("  * точную причину xgboost называет в поле reason выше — по нему и решайте;\n"
+                  "    если библиотеки на месте и драйвер виден, а GPU всё равно не берётся, "
+                  "остаётся обновить драйвер или поставить CUDA Toolkit 12")
         return 0
 
     if not args.data_dir:

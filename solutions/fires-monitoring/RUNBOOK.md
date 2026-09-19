@@ -262,15 +262,21 @@ py -3 train.py --gpu-report
 py -3 tools\train_loop.py --data-dir %USERPROFILE%\Documents\cosmo1\train --gpu-report
 ```
 
-Отчёт печатает ещё и состояние драйвера (`nvidia_smi`, `gpu`, `driver`) и каталоги CUDA-библиотек,
-которые решение нашло внутри Python (`cuda_dll_dirs`). Разбор ответа:
+Отчёт печатает состояние драйвера (`nvidia_smi`, `gpu`, `driver`), каталоги CUDA-библиотек внутри
+Python (`cuda_dll_dirs`) и проверку, какие библиотеки реально загружаются (`cuda_libraries`). Откат на
+CPU определяется по сообщениям самого xgboost («No visible GPU is found…», «Device is changed from GPU
+to CPU»), а подтверждением работы GPU служит GPU-структура `ellpack` в его же логе: проверка только по
+конфигу бустера давала ложный минус на исправной карте (xgboost 3.4 не пишет фактическое устройство в
+`save_config`). Разбор ответа:
 
 * `runtime_ok: true` и `"устройство": "cuda"` — GPU-путь готов;
 * `runtime_ok: false`, `nvidia_smi: null` — **драйвера нет или он не в PATH**: это и есть причина, никакие
   pip-пакеты её не исправят. Поставьте/обновите драйвер NVIDIA, перезагрузитесь;
-* `runtime_ok: false`, драйвер виден и версия есть — не находится CUDA-рантайм: `py -3 -m pip install
-  --upgrade xgboost nvidia-cuda-runtime-cu12`, затем добавьте напечатанные `cuda_dll_dirs` в PATH
-  (`set PATH=<каталог>;%PATH%`) и повторите `--gpu-report`;
+* `runtime_ok: false`, драйвер виден и версия есть — не хватает CUDA-библиотек: `py -3 -m pip install
+  --upgrade xgboost nvidia-cuda-runtime-cu12 nvidia-cublas-cu12 nvidia-cuda-nvrtc-cu12`. Каталоги этих
+  пакетов решение подхватывает само (`cuda_dll_dirs`), в путь их добавлять вручную не нужно;
+* `runtime_ok: false`, а в `cuda_libraries` всё «загружается» — смотрите `reason`: там дословное
+  сообщение xgboost (например, о несовместимости версии рантайма с драйвером);
 * в поле `reason` печатается и предупреждение самого xgboost (например, о несовпадении версии рантайма с
   драйвером) — оно обычно точнее любых догадок.
 
