@@ -588,6 +588,19 @@ def main(argv: list[str] | None = None) -> int:
         blob_result["model"].save(model_path)
         print(f"классификатор очагов сохранён: {model_path}")
 
+    # Прежнюю конфигурацию откладываем в сторону: обучение перезаписывает и веса, и модель,
+    # а вернуться к предыдущему состоянию иначе нечем (цикл так делает, train.py — тоже должен).
+    weights_path = Path(args.out)
+    if weights_path.exists():
+        weights_path.with_name(weights_path.stem + ".prev.json").write_text(
+            weights_path.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"прежние веса сохранены: {weights_path.with_name(weights_path.stem + '.prev.json')}")
+    previous_model = weights_path.with_name("severity_model.pkl")
+    if previous_model.exists():
+        backup = weights_path.with_name("severity_model.prev.pkl")
+        backup.write_bytes(previous_model.read_bytes())
+        print(f"прежняя модель сохранена: {backup}")
+
     bs_model_path = None
     if best_bs.get("mode") == "model" and best_bs.get("severity_model") is not None:
         bs_model_path = Path(args.out).with_name("severity_model.pkl")
