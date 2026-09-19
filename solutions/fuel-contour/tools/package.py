@@ -23,7 +23,7 @@ def package(output=None):
         if not path.exists():
             raise SystemExit('Run python -m fuel.cli suite before packaging')
         files['results/'+name]=path.read_bytes()
-    for strategy in ['earth','lunar']:
+    for strategy in ['earth','lunar','recourse']:
         for path in sorted((ROOT/'results'/strategy).rglob('*')):
             if path.is_file():files[path.relative_to(ROOT).as_posix()]=path.read_bytes()
     workflow=(repo/'.github/workflows/fuel-contour.yml').read_text()

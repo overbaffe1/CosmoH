@@ -14,6 +14,7 @@ from .datasets import research_copy
 from .project import calculate_project
 from .analysis import sensitivity, risk_analysis, monte_carlo, parameter_sensitivity, compare_decisions, stress_attribution, extension_demo
 from .validation import InputError
+from .recourse import emergency_response
 
 app = FastAPI(title='Топливный космоконтур 2035', version='0.2.0')
 
@@ -111,3 +112,16 @@ def export(req: Request):
                     if p.is_file(): archive.write(p, p.relative_to(directory).as_posix())
             return Response(stream.getvalue(), media_type='application/zip', headers={'Content-Disposition': 'attachment; filename="fuel-export.zip"'})
     return guarded(calculate)
+
+
+class RecourseRequest(BaseModel):
+    plan: dict
+    event_year: int = Field(default=2038, ge=2038, le=2040)
+    delivery_share: float = Field(default=0., ge=0, le=1)
+    observed_after_days: int = Field(default=0, ge=0, le=364)
+    max_emergency_t: float = Field(default=80., ge=0, le=80)
+
+
+@app.post('/api/recourse')
+def recourse(req: RecourseRequest):
+    return guarded(lambda: emergency_response(load_case(), **req.model_dump()))

@@ -7,6 +7,7 @@ from .planning import make_plan
 from .analysis import sensitivity, risk_analysis, monte_carlo, mcda, extension_demo, compare_decisions, parameter_sensitivity, stress_attribution, price_crossover
 from .project import calculate_project
 from .decision import discount_rate_crossover, decision_brief
+from .recourse import emergency_response
 
 
 def suite(output, count=100):
@@ -65,6 +66,11 @@ def suite(output, count=100):
               'planned_stress_mcda': mcda([{'plan_id': v['plan_id']+' + EX_ANTE_STRESS_DESIGN', 'base': v['base'], 'stress': v['planned_stress']} for v in summaries.values()])}
     report['discount_rate_crossover'] = discount_rate_crossover(summaries['earth']['costs_base'], summaries['lunar']['costs_base'])
     save_json(output / 'decision_brief.json', decision_brief(report))
+    recourse = [emergency_response(case, make_plan(case,'lunar'), observed_after_days=d) for d in (0,90,180,330)]
+    for r in recourse:
+        save_json(output / 'recourse' / f"delay-{r['observed_after_days']}.json", r)
+    report['recourse'] = [{k:r[k] for k in ('observed_after_days','observed_day','first_possible_arrival_day','added_order_t','incremental_cost_mln','avoided_shortage_t','action','residual_failed_rules')} | {'before':r['before']['summary'], 'after':r['after']['summary']} for r in recourse]
+    export_table(output/'recourse/comparison.csv', [{k:v for k,v in r.items() if k not in ('before','after','residual_failed_rules')} | {'remaining_shortage_t':r['after']['shortage_t'],'remaining_violations':r['after']['violations']} for r in report['recourse']])
     save_json(output / 'summary.json', report)
     export_table(output / 'comparison.csv', [{'strategy': k, 'scenario_design': tag, 'money_unit': 'mln constant-2035 units', 'mass_unit': 't', **v[tag]} for k, v in summaries.items() for tag in ['base','stress','planned_stress']])
     print(json.dumps({k: {s:v[s] for s in ['base','stress','planned_stress']} for k,v in summaries.items()}, ensure_ascii=False, indent=2))
