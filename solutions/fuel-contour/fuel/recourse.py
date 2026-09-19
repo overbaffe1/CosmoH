@@ -5,6 +5,7 @@ Only a new, previously unused Emergency source-year contract may be appended.
 """
 import copy
 from .engine import evaluate, lead_days
+from .analysis import stakeholder_effects
 from .validation import InputError, integer, number, validate_plan
 
 
@@ -13,6 +14,7 @@ def emergency_response(case, plan, event_year=2038, delivery_share=0., observed_
     validate_plan(case, plan)
     integer(event_year, 'event_year', 0)
     integer(observed_after_days, 'observed_after_days', 0)
+    event_year, observed_after_days = int(event_year), int(observed_after_days)
     number(delivery_share, 'delivery_share')
     number(max_emergency_t, 'max_emergency_t')
     years = sorted(r['year'] for r in case['demand'])
@@ -89,9 +91,11 @@ def emergency_response(case, plan, event_year=2038, delivery_share=0., observed_
             'incremental_cost_mln': after['summary']['total_cost_mln']-before['summary']['total_cost_mln'],
             'avoided_shortage_t': before['summary']['shortage_t']-after['summary']['shortage_t'],
             'residual_failed_rules': [r for r in after['constraint_checks'] if not r['passed']],
+            'stakeholders': stakeholder_effects(before, after),
             'limitations': ['Annual disruption starts on day one; later observation is an information delay, not a shifted event.',
                            'New Emergency contract only; existing source-year contracts are never resized.',
                            'No lost service before arrival can be undone; reserve or service failures can remain.',
                            'All original future orders are locked too; this is deliberately more restrictive than full recourse.',
+                           'Incremental operating expenses need separate funding approval; CAPEX constraints are not relaxed.',
                            'Not combined with mandatory stress, not a policy proven feasible in every scenario.'],
             'input_plan': original, 'response_plan': adapted, 'before': before, 'after': after}

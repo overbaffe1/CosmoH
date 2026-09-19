@@ -8602,5 +8602,306 @@
       0.0892165416948956
     ],
     "status_detail": "bracketed"
-  }
+  },
+  "recourse": [
+    {
+      "observed_after_days": 0,
+      "observed_day": 1095,
+      "first_possible_arrival_day": 1137,
+      "added_order_t": 70.79452054794521,
+      "incremental_cost_mln": 1016.8945370392357,
+      "avoided_shortage_t": 65.19013698630229,
+      "action": "ordered",
+      "residual_failed_rules": [
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2039,
+          "source": "",
+          "actual": 4.754849315067624,
+          "limit": 39.45205479452055,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2040,
+          "source": "",
+          "actual": 14.679506849313888,
+          "limit": 48.082191780821915,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        }
+      ],
+      "before": {
+        "total_cost_mln": 10731.207164284382,
+        "discounted_cost_mln": 10731.207164284382,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.10018664857525,
+        "served_t": 1324.8098630137006,
+        "min_commercial_service": 0.3998883561643517,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 65.19013698630229,
+        "min_total_service": 0.7392394520547836,
+        "min_critical_service": 0.8989340854149868,
+        "violations": 4
+      },
+      "after": {
+        "total_cost_mln": 11748.101701323618,
+        "discounted_cost_mln": 11748.101701323618,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.451871727570913,
+        "served_t": 1390.000000000006,
+        "min_commercial_service": 0.9999999999999786,
+        "min_inventory_t": 4.754849315067624,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 0.0,
+        "min_total_service": 0.999999999999997,
+        "min_critical_service": 0.9999999999999941,
+        "violations": 2
+      }
+    },
+    {
+      "observed_after_days": 90,
+      "observed_day": 1185,
+      "first_possible_arrival_day": 1227,
+      "added_order_t": 51.06849315068493,
+      "incremental_cost_mln": 722.8455014157917,
+      "avoided_shortage_t": 50.4556712328766,
+      "action": "ordered",
+      "residual_failed_rules": [
+        {
+          "rule_id": "BASE_TOTAL_SERVICE",
+          "period": 2038,
+          "source": "",
+          "actual": 0.9410621369862956,
+          "limit": 0.97,
+          "operator": ">=",
+          "passed": false,
+          "unit": "share",
+          "severity": "resilience_benchmark"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2039,
+          "source": "",
+          "actual": 0,
+          "limit": 39.45205479452055,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2040,
+          "source": "",
+          "actual": 9.924657534246421,
+          "limit": 48.082191780821915,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        }
+      ],
+      "before": {
+        "total_cost_mln": 10731.207164284382,
+        "discounted_cost_mln": 10731.207164284382,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.10018664857525,
+        "served_t": 1324.8098630137006,
+        "min_commercial_service": 0.3998883561643517,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 65.19013698630229,
+        "min_total_service": 0.7392394520547836,
+        "min_critical_service": 0.8989340854149868,
+        "violations": 4
+      },
+      "after": {
+        "total_cost_mln": 11454.052665700174,
+        "discounted_cost_mln": 11454.052665700174,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.328611733860638,
+        "served_t": 1375.2655342465787,
+        "min_commercial_service": 0.8158191780821863,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 14.734465753425692,
+        "min_total_service": 0.9410621369862956,
+        "min_critical_service": 0.9999999999999941,
+        "violations": 3
+      }
+    },
+    {
+      "observed_after_days": 180,
+      "observed_day": 1275,
+      "first_possible_arrival_day": 1317,
+      "added_order_t": 31.34246575342466,
+      "incremental_cost_mln": 443.54008727545806,
+      "avoided_shortage_t": 30.966356164383207,
+      "action": "ordered",
+      "residual_failed_rules": [
+        {
+          "rule_id": "BASE_TOTAL_SERVICE",
+          "period": 2038,
+          "source": "",
+          "actual": 0.8631048767123244,
+          "limit": 0.97,
+          "operator": ">=",
+          "passed": false,
+          "unit": "share",
+          "severity": "resilience_benchmark"
+        },
+        {
+          "rule_id": "BASE_CRITICAL_SERVICE",
+          "period": 2038,
+          "source": "",
+          "actual": 0.9649268972216358,
+          "limit": 0.99,
+          "operator": ">=",
+          "passed": false,
+          "unit": "share",
+          "severity": "resilience_benchmark"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2039,
+          "source": "",
+          "actual": 0,
+          "limit": 39.45205479452055,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2040,
+          "source": "",
+          "actual": 9.924657534246421,
+          "limit": 48.082191780821915,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        }
+      ],
+      "before": {
+        "total_cost_mln": 10731.207164284382,
+        "discounted_cost_mln": 10731.207164284382,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.10018664857525,
+        "served_t": 1324.8098630137006,
+        "min_commercial_service": 0.3998883561643517,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 65.19013698630229,
+        "min_total_service": 0.7392394520547836,
+        "min_critical_service": 0.8989340854149868,
+        "violations": 4
+      },
+      "after": {
+        "total_cost_mln": 11174.74725155984,
+        "discounted_cost_mln": 11174.74725155984,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.242324281461674,
+        "served_t": 1355.7762191780857,
+        "min_commercial_service": 0.6467330831300376,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 34.223780821919085,
+        "min_total_service": 0.8631048767123244,
+        "min_critical_service": 0.9649268972216358,
+        "violations": 4
+      }
+    },
+    {
+      "observed_after_days": 330,
+      "observed_day": 1425,
+      "first_possible_arrival_day": 1467,
+      "added_order_t": 0.0,
+      "incremental_cost_mln": 0.0,
+      "avoided_shortage_t": 0.0,
+      "action": "too_late_this_year",
+      "residual_failed_rules": [
+        {
+          "rule_id": "BASE_TOTAL_SERVICE",
+          "period": 2038,
+          "source": "",
+          "actual": 0.7392394520547836,
+          "limit": 0.97,
+          "operator": ">=",
+          "passed": false,
+          "unit": "share",
+          "severity": "resilience_benchmark"
+        },
+        {
+          "rule_id": "BASE_CRITICAL_SERVICE",
+          "period": 2038,
+          "source": "",
+          "actual": 0.8989340854149868,
+          "limit": 0.99,
+          "operator": ">=",
+          "passed": false,
+          "unit": "share",
+          "severity": "resilience_benchmark"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2039,
+          "source": "",
+          "actual": 0,
+          "limit": 39.45205479452055,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        },
+        {
+          "rule_id": "RESERVE_45D",
+          "period": 2040,
+          "source": "",
+          "actual": 9.924657534246421,
+          "limit": 48.082191780821915,
+          "operator": ">=",
+          "passed": false,
+          "unit": "t"
+        }
+      ],
+      "before": {
+        "total_cost_mln": 10731.207164284382,
+        "discounted_cost_mln": 10731.207164284382,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.10018664857525,
+        "served_t": 1324.8098630137006,
+        "min_commercial_service": 0.3998883561643517,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 65.19013698630229,
+        "min_total_service": 0.7392394520547836,
+        "min_critical_service": 0.8989340854149868,
+        "violations": 4
+      },
+      "after": {
+        "total_cost_mln": 10731.207164284382,
+        "discounted_cost_mln": 10731.207164284382,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.10018664857525,
+        "served_t": 1324.8098630137006,
+        "min_commercial_service": 0.3998883561643517,
+        "min_inventory_t": 0,
+        "max_inventory_t": 43.965753424656185,
+        "shortage_t": 65.19013698630229,
+        "min_total_service": 0.7392394520547836,
+        "min_critical_service": 0.8989340854149868,
+        "violations": 4
+      }
+    }
+  ]
 }

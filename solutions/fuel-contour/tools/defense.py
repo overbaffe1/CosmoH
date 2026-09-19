@@ -27,7 +27,7 @@ def slides_for(s):
     delta = l['decision_comparison']
     party_names = ['Оператор: минимальный запас, т','Критические клиенты: выдано, т',
                    'Коммерческие клиенты: выдано, т','Поставщики: закупка + резерв, млн','Финансирование: PV расходов, млн']
-    return [
+    slides = [
       dict(title='Чтобы миссия не осталась без топлива', kicker='ЗАДАЧА / 2035–2040', seconds=25,
            lines=['Мы — оператор условной «космической заправки».', 'Выбираем поставщиков, запас и инвестиции; проверяем, хватит ли топлива и денег.'],
            takeaway='Не проектируем ракету. Делаем проверяемый инструмент планирования снабжения.',
@@ -92,29 +92,46 @@ def slides_for(s):
            takeaway='Внешний reference gate заблокирован отсутствующей upstream-ссылкой. Свои проверки отделены; исходники организатора не исправлены.',
            notes='Заверши одной фразой: оператор видит цену и последствия решения до того, как возьмёт обязательства. Это учебная модель, не управление реальными баками; нет глобального оптимума, откалиброванных отказов или автоматической реакции после срыва. Готов отвечать по каждому числу и показать исходный файл.')
     ]
+    # Visuals retain raw suite values; formatting is presentation only.
+    visuals = {
+      0: {'type':'cover'}, 1: {'type':'network'},
+      3: {'type':'cards','items':[{'label':'Земная архитектура','value':e['base']['total_cost_mln'],'unit':'млн у.е. / BASE'}, {'label':'С лунным каналом','value':l['base']['total_cost_mln'],'unit':'млн у.е. / BASE'}]},
+      4: {'type':'bars','unit':'т дефицита','items':[{'label':'Земная','value':e['stress']['shortage_t']},{'label':'Лунная','value':l['stress']['shortage_t']}]},
+      5: {'type':'bars','unit':'т дополнительного дефицита','items':[{'label':label,'value':row['delta_shortage_t']} for label,row in zip(['Рост спроса','Повышение цен','Недопоставка Lunar'],l['stress_attribution']['steps'][1:4])]},
+      6: {'type':'cards','items':[{'label':name,'value':v['planned_stress']['total_cost_mln'],'unit':'млн у.е. / подготовленный STRESS','detail':'Доплата: '+n(v['decision_comparison']['incremental_stress_cost_mln'])+' млн · дефицит 0 · нарушений 0'} for name,v in [('Земная',e),('Лунная',l)]]},
+      7: {'type':'rates','root':rate,'points':[{'rate':i/200,'difference':sum(r['total_mln']/(1+i/200)**(r['year']-l['costs_base'][0]['year']+1) for r in l['costs_base'])-sum(r['total_mln']/(1+i/200)**(r['year']-e['costs_base'][0]['year']+1) for r in e['costs_base'])} for i in range(21)]},
+      9: {'type':'cards','items':[{'label':'Коммерческие потребители','value':delta['avoided_stress_shortage_t'],'unit':'т дополнительного снабжения','detail':'Критический сервис не ухудшается'}, {'label':'Финансирующая сторона','value':delta['incremental_stress_cost_mln'],'unit':'млн у.е. дополнительного финансирования','detail':'Платежи поставщикам — не их прибыль'}]},
+      10: {'type':'demo'}, 11: {'type':'closing'}
+    }
+    for i,visual in visuals.items():slides[i]['visual']=visual
+    if 'recourse' in s:
+        rows=s['recourse']
+        slides[8].update(title='42 дня, которые нельзя обойти', kicker='ПОСЛЕ НАБЛЮДЕНИЯ / ОТДЕЛЬНЫЙ СБОЙ LUNAR',
+            lines=['Все исходные контракты и инвестиции зафиксированы. Добавляем только новый Emergency-заказ.', 'Сбой в 2038; ползунок меняет задержку наблюдения, не момент начала сбоя.'],
+            headers=['Когда узнали','Заказ E, т','Осталось дефицита, т','Нарушения'],
+            rows=[[str(r['observed_after_days'])+' дней',n(r['added_order_t']),n(r['after']['shortage_t']),str(r['after']['violations'])] for r in rows],
+            visual={'type':'bars','unit':'т остаточного дефицита','items':[{'label':'Сразу' if r['observed_after_days']==0 else '+'+str(r['observed_after_days'])+' дней','value':r['after']['shortage_t'],'detail':str(r['after']['violations'])+' наруш.'} for r in rows]},
+            takeaway=f"Сразу: {n(rows[0]['before']['shortage_t'])} → {n(rows[0]['after']['shortage_t'])} т, но остаются {rows[0]['after']['violations']} нарушения. Доплата {n(rows[0]['incremental_cost_mln'])} млн.",
+            notes='Сбой отдельный, не mandatory stress. После сообщения о недопоставке новые физические поставки возможны не раньше 42 дней. Проверили совпадение всей истории до прибытия и сохранение всех старых решений. Покупаем минимум объявленного остатка потери, доступной доли мощности E и лимита оператора. Ни оптимизации по будущему результату, ни отмены оплаты Lunar. Свободный E по контрольному тарифу — TEAM-допущение. При позднем наблюдении дефицит остаётся; при раннем нулевой дефицит не отменяет нарушения резерва.')
+    slides[10]['lines']=['Откройте сайт и запустите демонстрацию: BASE → STRESS → подготовка → обратная проверка.', 'Меняйте год на карте и задержку наблюдения сбоя. Сохраняйте реальный расчёт, не скриншот.']
+    slides[10]['notes']='Главная / — наглядный сценарный центр. Подробный редактор сохранён в /planner. Для показа после четырёх шагов перейдите к реакции на сбой и сравните задержки 0 и 90 дней. JSON содержит оба полных результата и планы. Если сервер недоступен, честно переходите к сохранённому экспорту.'
+    slides[11]['notes']=slides[11]['notes'].replace('или автоматической реакции после срыва','или универсальной политики после срыва; ограниченный Emergency-эксперимент показан отдельно')
+    return slides
+
 
 
 CHAIN_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="270" viewBox="0 0 1100 270" role="img" aria-label="Схема источники — узел — потребители">
 <defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="#29856a"/></marker></defs>
 <g fill="#eef5f1" stroke="#bfd7cb"><rect x="1" y="1" width="345" height="267" rx="16"/><rect x="402" y="35" width="282" height="198" rx="16"/><rect x="740" y="55" width="358" height="158" rx="16"/></g>
 <g stroke="#29856a" stroke-width="4" marker-end="url(#arrow)"><path d="M347 134H393"/><path d="M685 134H732"/></g>
-<g font-family="Arial,sans-serif" font-size="19" fill="#173d37"><text x="18" y="34" font-weight="bold">Источники / сроки доставки</text><text x="18" y="75">A · Core: 12 месяцев</text><text x="18" y="113">B · Flex: 4 месяца</text><text x="18" y="151">C · New: 18–24 мес.; нужен ввод</text><text x="18" y="189">D · Lunar: 1–2 мес. после ввода</text><text x="18" y="227">E · Emergency: 2–6 недель</text><text x="423" y="83" font-weight="bold">Орбитальный узел</text><text x="423" y="126">Хранение и потери</text><text x="423" y="163">Физический резерв</text><text x="423" y="200">Доступная ёмкость</text><text x="761" y="96" font-weight="bold">Потребители</text><text x="761" y="141">Критические — первыми</text><text x="761" y="183">Коммерческие — остаток</text></g></svg>'''
-
-STYLE = '''@page{size:320mm 180mm;margin:0}*{box-sizing:border-box}body{margin:0;background:#dce5e0;color:#17352f;font-family:Arial,sans-serif}article{width:320mm;height:180mm;padding:13mm 17mm 16mm;position:relative;background:#fbfcf9;margin:18px auto;break-after:page;overflow:hidden}article:last-child{break-after:auto}.kicker{font-size:13px;letter-spacing:2px;color:#2c8266;font-weight:bold}h1{font-size:35px;line-height:1.15;margin:13px 0 20px;max-width:1080px}p{font-size:22px;line-height:1.35;margin:8px 0}.content{height:330px}table{border-collapse:collapse;width:100%;font-size:19px;margin-top:20px}th{text-align:left;background:#173d37;color:white}td,th{padding:10px 13px;border-bottom:1px solid #ccdcd3}tbody tr:nth-child(even){background:#edf4ef}.takeaway{position:absolute;bottom:22mm;left:17mm;right:17mm;padding:12px 16px;border-left:5px solid #2c8266;background:#e6f1e9;font-size:19px;line-height:1.3}footer{position:absolute;bottom:8mm;left:17mm;right:17mm;font-size:12px;color:#577168;border-top:1px solid #ccdad1;padding-top:9px}svg{width:100%;height:245px;margin-top:15px}@media print{article{margin:0}}'''
+<g font-family="Arial,sans-serif" font-size="19" fill="#173d37"><text x="18" y="34" font-weight="bold">Источники / сроки доставки</text><text x="18" y="75">A · Core: 12 месяцев</text><text x="18" y="113">B · Flex: 4 месяца</text><text x="18" y="151">C · New: 18–24 мес.; нужен ввод</text><text x="18" y="189">D · Lunar: 1–2 мес. после ввода</text><text x="18" y="227">E · Emergency: 6 недель</text><text x="423" y="83" font-weight="bold">Орбитальный узел</text><text x="423" y="126">Хранение и потери</text><text x="423" y="163">Физический резерв</text><text x="423" y="200">Доступная ёмкость</text><text x="761" y="96" font-weight="bold">Потребители</text><text x="761" y="141">Критические — первыми</text><text x="761" y="183">Коммерческие — остаток</text></g></svg>'''
 
 
 def write_assets(summary, dest=None):
     dest = Path(dest or ROOT/'docs');dest.mkdir(parents=True, exist_ok=True)
     slides = slides_for(summary)
-    parts = []
-    for i, slide in enumerate(slides, 1):
-        body=''.join('<p>'+html.escape(line)+'</p>' for line in slide['lines'])
-        if slide.get('chain'):body+=CHAIN_SVG
-        if slide.get('rows'):
-            body+='<table><thead><tr>'+''.join('<th>'+html.escape(x)+'</th>' for x in slide['headers'])+'</tr></thead><tbody>'
-            body+=''.join('<tr>'+''.join('<td>'+html.escape(str(x))+'</td>' for x in row)+'</tr>' for row in slide['rows'])+'</tbody></table>'
-        parts.append(f'<article><div class="kicker">{html.escape(slide["kicker"])}</div><h1>{html.escape(slide["title"])}</h1><div class="content">{body}</div><div class="takeaway">{html.escape(slide["takeaway"])}</div><footer>КОСМОКОНТУР / TEAM_ANALYSIS · Млн постоянных у.е. 2035, тонны · Страница {i} / {len(slides)}</footer></article>')
-    (dest/'PRESENTATION.html').write_text('<!doctype html><html lang="ru"><meta charset="utf-8"><title>Космоконтур — защита</title><style>'+STYLE+'</style><body>'+''.join(parts)+'</body></html>',encoding='utf-8')
+    from tools.deck_design import render_deck
+    (dest/'PRESENTATION.html').write_text(render_deck(slides),encoding='utf-8')
     (dest/'SUPPLY_CHAIN.svg').write_text(CHAIN_SVG,encoding='utf-8')
     notes=['# Слова к слайдам — для выступающего, не для чтения с экрана',
            '\nРепетиционная версия на 7 минут, не официальный регламент. Уточните лимит времени у организаторов. '+
@@ -130,45 +147,8 @@ def write_assets(summary, dest=None):
 
 
 def write_pptx(slides, dest=None):
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
-    from pptx.dml.color import RGBColor
-    from pptx.enum.shapes import MSO_SHAPE
-    prs=Presentation();prs.slide_width=Inches(13.333);prs.slide_height=Inches(7.5)
-    def text(slide,x,y,w,h,value,size=20,color='17352F',bold=False):
-        shape=slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-        frame=shape.text_frame;frame.word_wrap=True
-        for i,line in enumerate(value.split('\n')):
-            p=frame.paragraphs[0] if i==0 else frame.add_paragraph()
-            p.text=line;p.font.name='Arial';p.font.size=Pt(size);p.font.bold=bold;p.font.color.rgb=RGBColor.from_string(color)
-        return shape
-    for i,data in enumerate(slides,1):
-        slide=prs.slides.add_slide(prs.slide_layouts[6]);slide.background.fill.solid();slide.background.fill.fore_color.rgb=RGBColor.from_string('FBFCF9')
-        text(slide,.65,.28,12,.3,data['kicker'],11,'2C8266',True)
-        text(slide,.65,.77,12,1.0,data['title'],28,bold=True)
-        text(slide,.65,1.9,12,1.2,'\n'.join(data['lines']),18)
-        if data.get('chain'):
-            for x,w,label in [(.7,4.25,'ИСТОЧНИКИ\nCore · 12 мес. / Flex · 4 мес.\nNew · 18–24 мес.; нужен ввод\nLunar · 1–2 мес. после ввода\nEmergency · 2–6 недель'),(5.2,3.2,'УЗЕЛ\nЁмкость и потери\nФизический запас\nРезерв'),(8.7,3.9,'ПОТРЕБИТЕЛИ\nКритические — первыми\nКоммерческие — остаток')]:
-                shape=slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE,Inches(x), Inches(3.15), Inches(w), Inches(2.6))
-                shape.fill.solid();shape.fill.fore_color.rgb=RGBColor.from_string('E6F1E9');shape.line.fill.background()
-                text(slide,x+.1,3.35,w-.2,2.3,label,17)
-            text(slide,4.9,4,.4,.6,'→',22);text(slide,8.35,4,.4,.6,'→',22)
-        if data.get('rows'):
-            rows=[data['headers']]+data['rows'];cols=len(rows[0])
-            table=slide.shapes.add_table(len(rows),cols,Inches(.7),Inches(3.05),Inches(11.95),Inches(.47*len(rows))).table
-            for ri,row in enumerate(rows):
-                for ci,value in enumerate(row):
-                    cell=table.cell(ri,ci);cell.text=str(value);cell.margin_left=Inches(.10);cell.margin_right=Inches(.08)
-                    cell.fill.solid();cell.fill.fore_color.rgb=RGBColor.from_string('173D37' if ri==0 else 'EDF4EF' if ri%2==0 else 'FBFCF9')
-                    for p in cell.text_frame.paragraphs:
-                        p.font.name='Arial';p.font.size=Pt(15 if cols>=4 else 16);p.font.bold=ri==0
-                        p.font.color.rgb=RGBColor.from_string('FFFFFF' if ri==0 else '17352F')
-            if i==10:
-                table.columns[0].width=Inches(6);table.columns[1].width=Inches(2.975);table.columns[2].width=Inches(2.975)
-        text(slide,.7,6.05,11.95,.88,data['takeaway'],16,'21664F',True)
-        text(slide,.7,7.05,12,.3,f'КОСМОКОНТУР · TEAM_ANALYSIS · Млн постоянных у.е. 2035 / тонны                         {i} / {len(slides)}',10,'577168')
-        slide.notes_slide.notes_text_frame.text=data['notes']
-    prs.save(str(dest or ROOT/'docs/PRESENTATION.pptx'))
+    from tools.deck_design import render_pptx
+    render_pptx(slides, dest or ROOT/'docs/PRESENTATION.pptx')
 
 
 if __name__=='__main__':

@@ -72,3 +72,26 @@ def test_api_response_contains_full_inputs_and_honest_residual():
     assert r['after']['summary']['shortage_t']>0
     assert r['residual_failed_rules']
     assert client.post('/api/recourse',json={'plan':make_plan(c,'lunar'),'observed_after_days':400}).status_code==422
+
+
+def test_partial_disruption_can_be_feasible_without_changing_old_orders():
+    c=load_case();p=make_plan(c,'lunar');before=copy.deepcopy(c)
+    r=emergency_response(c,p,delivery_share=.5)
+    assert r['added_order_t']==pytest.approx(60)
+    assert r['after']['summary']['shortage_t']==0
+    assert r['after']['summary']['violations']==0
+    assert r['original_commitments_unchanged'] and c==before
+    assert len(r['stakeholders'])==5
+
+
+def test_operator_purchase_limit_is_a_real_limit_not_a_budget_override():
+    c=load_case();p=make_plan(c,'lunar')
+    r=emergency_response(c,p,max_emergency_t=20)
+    assert r['added_order_t']==20
+    assert r['after']['summary']['shortage_t']>0
+    assert r['incremental_cost_mln']>0
+
+
+def test_integral_float_calendar_arguments_are_canonicalized():
+    c=load_case();p=make_plan(c,'lunar')
+    assert emergency_response(c,p,event_year=2038.0,observed_after_days=90.0)==emergency_response(c,p,event_year=2038,observed_after_days=90)

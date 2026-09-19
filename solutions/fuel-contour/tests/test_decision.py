@@ -90,10 +90,22 @@ def test_defense_generation_is_deterministic_and_does_not_mutate(tmp_path):
     a={p.name:p.read_bytes() for p in (tmp_path/'a').iterdir()}
     b={p.name:p.read_bytes() for p in (tmp_path/'b').iterdir()}
     assert a==b
-    assert a['PRESENTATION.html'].count(b'<article>')==12
+    assert a['PRESENTATION.html'].count(b'<article ')==12
 
 
 def test_defense_stops_if_control_narrative_becomes_false():
     from tools.defense import slides_for
     s=summary_fixture();s['strategies']['earth']['base']['violations']=1
     with pytest.raises(ValueError,match='NARRATIVE_REVIEW'):slides_for(s)
+
+
+def test_visual_presentation_keeps_underlying_evidence_and_print_all_slides():
+    from tools.defense import slides_for
+    from tools.deck_design import render_deck
+    s=summary_fixture();slides=slides_for(s);html=render_deck(slides)
+    assert slides[4]['visual']['items'][1]['value']==s['strategies']['lunar']['stress']['shortage_t']
+    assert len(slides[7]['visual']['points'])==21
+    assert 'nextSlide' in html and 'ArrowRight' in html and '@media print' in html
+    assert html.count('<article ')==12
+    if 'recourse' in s:
+        assert slides[8]['visual']['items'][1]['value']==s['recourse'][1]['after']['shortage_t']
