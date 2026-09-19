@@ -97,9 +97,27 @@ def write_submission(rows: list[dict], path: str | Path) -> Path:
     return path
 
 
+def raise_field_limit() -> None:
+    """Снимает лимит длины поля у csv-модуля (по умолчанию 128 КиБ).
+
+    RLE одного чипа с крупной гарью легко перерастает этот лимит: строка вида
+    ``120 340 400 12 ...`` на десятки тысяч пар. Организаторы читают файл своим кодом, а наш
+    валидатор без этого падал на собственном же результате.
+    """
+
+    limit = 2 ** 31 - 1
+    while limit > 1024:
+        try:
+            csv.field_size_limit(limit)
+            return
+        except OverflowError:
+            limit //= 2
+
+
 def read_submission(path: str | Path) -> dict[tuple[str, int], str]:
     """Читает submission.csv в словарь ``(chip_id, class_id) -> rle``."""
 
+    raise_field_limit()
     out: dict[tuple[str, int], str] = {}
     with Path(path).open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
@@ -111,6 +129,7 @@ def read_submission(path: str | Path) -> dict[tuple[str, int], str]:
 def read_template(path: str | Path) -> list[tuple[str, int]]:
     """Читает sample_submission.csv: список ожидаемых пар (chip_id, class_id)."""
 
+    raise_field_limit()
     pairs: list[tuple[str, int]] = []
     with Path(path).open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)

@@ -104,6 +104,12 @@ CYCLE_SCHEDULE: list[dict] = [
 #: Сдвиги, которые перебираются при подборе смещений классов.
 BIAS_GRID = (-0.08, -0.05, -0.03, -0.015, 0.0, 0.015, 0.03, 0.05, 0.08)
 
+#: Короткая сетка для дешёвого режима: шаг по осям крупнее, проходов меньше.
+BIAS_GRID_CHEAP = (-0.08, -0.03, 0.03, 0.08)
+
+#: Сколько комбинаций постобработки доводится подбором смещений (остальные оцениваются как есть).
+SPATIAL_FINALISTS = 3
+
 #: Порог «улучшения» F1 активного горения: меньше этой разницы считаем шумом.
 AF_EPS = 3e-4
 
@@ -196,13 +202,18 @@ class ValCache:
                                  bias=None, cuts=(0.5, 1.5, 2.5),
                                  subset: set[int] | None = None,
                                  smooth: int = 0, majority: int = 0,
-                                 majority_iters: int = 1, demote: int = 0) -> dict:
+                                 majority_iters: int = 1, demote: int = 0,
+                                 morphology: bool = True) -> dict:
         """Метрики по заранее посчитанным вероятностям (или непрерывной степени для регрессии).
 
         ``subset`` — позиции чипов, которые входят в замер (по умолчанию — все): на нём держится
         проверка смещений классов на второй половине отложенных чипов.
         """
 
+        if not morphology:
+            # Морфология (чистка мелких контуров) — самая дорогая часть замера: на поиске
+            # смещений она не нужна, важен лишь порядок вариантов; точный замер — в приёмке.
+            params = replace(params, min_patch_px=0, fill_holes_mask=False)
         bias_array = None if bias is None else np.asarray(bias, dtype=np.float32)
         pairs = {}
         for position, (item, value) in enumerate(zip(self.chips, values)):
@@ -439,7 +450,8 @@ def verification_split(cache: ValCache) -> tuple[list[int], list[int]]:
 
 def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSParams,
               base_bias=None, smooth: int = 0, majority: int = 0,
-              majority_iters: int = 1, demote: int = 0) -> tuple[tuple, dict]:
+              majority_iters: int = 1, demote: int = 0,
+              cheap: bool = False) -> tuple[tuple, dict]:
     """Координатный подъём по смещениям классов: максимум объектива на отложенных чипах.
 
     Вероятности считаются один раз, поэтому каждый вариант смещений — это только пересчёт
@@ -455,20 +467,24 @@ def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSPar
 
     fit_set, check_set = set(fit_ids), set(check_ids)
 
-    def subset_score(candidate, positions) -> float:
+    def subset_score(candidate, positions, fast: bool = False) -> float:
         result = cache.score_from_probabilities(values, params, bias=candidate, subset=positions,
                                                 smooth=smooth, majority=majority,
-                                                majority_iters=majority_iters, demote=demote)
+                                                majority_iters=majority_iters, demote=demote,
+                                                morphology=not fast)
         return objective(result["iou_burn"], result["miou_sev"])
 
-    best_obj = subset_score(bias, fit_set)
-    for _ in range(2):
+    # в дешёвом режиме подъём идёт по короткой сетке, за один проход и без морфологии:
+    # это поиск, а решение всё равно принимается по точному замеру ниже
+    grid = BIAS_GRID_CHEAP if cheap else BIAS_GRID
+    best_obj = subset_score(bias, fit_set, fast=cheap)
+    for _ in range(1 if cheap else 2):
         for cls in range(4):
             current = bias[cls]
-            for delta in BIAS_GRID:
+            for delta in grid:
                 candidate = list(bias)
                 candidate[cls] = current + delta
-                value = subset_score(candidate, fit_set)
+                value = subset_score(candidate, fit_set, fast=cheap)
                 if value > best_obj + 1e-5:
                     best_obj, bias = value, candidate
     # принимаем смещения, только если они улучшают и вторую половину отложенных чипов
@@ -514,6 +530,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", required=True, help="каталог обучающей части набора")
     ap.add_argument("--out", default=str(ROOT / "weights" / "weights.json"))
     ap.add_argument("--cycles", type=int, default=len(CYCLE_SCHEDULE), help="сколько циклов выполнить")
+    # (--no-spatial убирает один шаг, поэтому число шагов может быть меньше len(CYCLE_SCHEDULE))
     ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
                     help="auto — GPU (xgboost), если он есть, иначе CPU")
     ap.add_argument("--pixels", type=int, default=SEVERITY_TRAIN_PIXELS,
@@ -533,6 +550,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="показать, что известно про GPU, и выйти (диагностика CUDA)")
     ap.add_argument("--report", default=None,
                     help="куда записать отчёт о цикле (по умолчанию docs/severity_loop.json)")
+    ap.add_argument("--spatial", action=argparse.BooleanOptionalAction, default=True,
+                    help="шаг пространственной постобработки вероятностей (сглаживание и фильтр "
+                         "большинства); --no-spatial пропускает его целиком")
     ap.add_argument("--af-tune", action=argparse.BooleanOptionalAction, default=True,
                     help="подбирать пороги детектора активного горения (по умолчанию да; "
                          "--no-af-tune выключает, тогда F1_af берётся как есть)")
@@ -641,7 +661,9 @@ def main(argv: list[str] | None = None) -> int:
     final: dict | None = None       # переобучение на всех чипах — модель для сабмита
     trained_models: list[tuple[float, sev.SeverityModel, dict]] = []
 
-    for index, config in enumerate(CYCLE_SCHEDULE[:args.cycles], start=1):
+    schedule = [config for config in CYCLE_SCHEDULE
+                if args.spatial or config.get("mode") != "spatial"]
+    for index, config in enumerate(schedule[:args.cycles], start=1):
         name = config["name"]
         mode = config.get("mode", "train")
         t0 = time.perf_counter()
@@ -795,13 +817,22 @@ def main(argv: list[str] | None = None) -> int:
             base_bias = best.get("bias")
             combos = [(0, 0, 1, 0), (1, 0, 1, 0), (2, 0, 1, 0), (1, 1, 1, 0), (2, 1, 1, 0),
                       (1, 2, 1, 0), (2, 2, 1, 0), (1, 1, 1, 16), (2, 1, 1, 16), (2, 2, 1, 24)]
+            # Ступень 1: все комбинации с текущими смещениями — точный, но недорогой замер.
+            ranked = []
+            for combo in combos:
+                res = val_cache.score_from_probabilities(
+                    values, params, bias=base_bias, smooth=combo[0], majority=combo[1],
+                    majority_iters=combo[2], demote=combo[3])
+                ranked.append((objective(res["iou_burn"], res["miou_sev"]), combo))
+            ranked.sort(key=lambda item: item[0], reverse=True)
+            # Ступень 2: смещения заново подбираются только финалистам (сглаживание меняет
+            # масштаб вероятностей, поэтому прежние смещения для них не оптимальны)
             chosen = None
-            for smooth, majority, iters, demote in combos:
-                # смещения подбираются заново: сглаживание меняет масштаб вероятностей,
-                # поэтому смещения, найденные без него, перестают быть оптимальными
+            for _, combo in ranked[:SPATIAL_FINALISTS]:
+                smooth, majority, iters, demote = combo
                 cand_bias, res = tune_bias(val_cache, model, params, base_bias=base_bias,
                                            smooth=smooth, majority=majority,
-                                           majority_iters=iters, demote=demote)
+                                           majority_iters=iters, demote=demote, cheap=True)
                 value = objective(res["iou_burn"], res["miou_sev"])
                 if chosen is None or value > chosen[0]:
                     chosen = (value, smooth, majority, iters, res, cand_bias, demote)
