@@ -41,11 +41,11 @@ const axe=require('axe-core');const fs=require('fs');const path=require('path');
  await page.setViewportSize({width:1440,height:1080});await page.evaluate(()=>scrollTo({top:0,behavior:'instant'}));await page.waitForFunction(()=>scrollY===0);
  await page.screenshot({path:path.join(root,'results/showcase-light-viewport.png')});
  await page.goto(new URL('/presentation',base).href);await page.locator('#slidePicker').selectOption('2');
- check(await page.locator('#slideCount').textContent()==='3 / 8','Slide picker broken');
+ check(await page.locator('#slideCount').textContent()==='3 / 10','Slide picker broken');
  check(await page.locator('#notesToggle').count()===0&&await page.locator('#speakerPanel').count()===0,'Presenter prompt must not be in audience deck');
  await page.screenshot({path:path.join(root,'results/presentation-process.png')});
  await page.setViewportSize({width:390,height:844});await page.waitForFunction(()=>document.documentElement.scrollWidth<=innerWidth);
- await page.emulateMedia({media:'print'});check(await page.locator('article:visible').count()===8,'Print must contain 8 audience slides');
+ await page.emulateMedia({media:'print'});check(await page.locator('article:visible').count()===10,'Print must contain 10 audience slides');
  // A privacy-restricted browser must still boot, with in-memory theme switching.
  const restricted=await browser.newContext();await restricted.addInitScript(()=>{Storage.prototype.getItem=()=>{throw Error('Storage blocked')};Storage.prototype.setItem=()=>{throw Error('Storage blocked')};});
  const offline=await restricted.newPage();offline.on('pageerror',e=>errors.push(e.message));await offline.goto(base);await offline.locator('#themeToggle').click();

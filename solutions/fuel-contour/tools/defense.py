@@ -190,4 +190,4 @@ if __name__=='__main__':
     summary=json.loads((ROOT/'results/summary.json').read_text())
     slides=write_assets(summary)
     if '--pptx' in sys.argv:write_pptx(slides)
-    print('Built 8-slide defense, separate 4-minute speech and decision evidence')
+    print('Built 10-slide defense, separate 4-minute speech and decision evidence')

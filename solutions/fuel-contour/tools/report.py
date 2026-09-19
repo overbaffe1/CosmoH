@@ -142,6 +142,6 @@ bash tools/reproduce.sh</pre><p>Вторая команда строит все 
     (dest/'COMPARISON.html').write_text(document('Одностраничное сравнение · v0.2',[one]),encoding='utf-8')
     write_assets(s, dest)
     (dest/'numbers.json').write_text(json.dumps(s,ensure_ascii=False,indent=2,allow_nan=False)+'\n',encoding='utf-8')
-    print('Generated REPORT (10 pages), COMPARISON (1), PRESENTATION (8 slides) + speaker notes + decision brief, numbers.json from suite output')
+    print('Generated REPORT (10 pages), COMPARISON (1), PRESENTATION (10 slides) + speaker notes + decision brief, numbers.json from suite output')
 
 if __name__=='__main__':main()

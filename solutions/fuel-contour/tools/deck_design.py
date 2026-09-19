@@ -49,6 +49,10 @@ CSS += '''
 .decision-matrix{display:grid;grid-template-columns:165px 1fr 1fr;gap:12px;margin-top:22px}.matrix-axis{font-size:12px;letter-spacing:1.5px;color:#536e62;padding-bottom:2px}.matrix-side{font-size:19px;color:#456854;align-self:center;line-height:1.4}.matrix-cell{border:1px solid #abc8b2;background:#dfebe0;border-radius:10px;padding:15px 20px}.matrix-cell.unfit{background:#f3e7db;border-color:#d1b99f}.matrix-cell strong{display:block;font-size:33px;font-weight:400;letter-spacing:-1px}.matrix-cell small{font-size:15px;letter-spacing:0}.matrix-cell span{display:block;font-size:15px;margin:6px 0}.matrix-cell b{font-size:12px;color:#2b6746;font-weight:400}.matrix-cell.unfit b{color:#895427}
 .chapter{position:absolute;right:64px;top:28px;font-size:10px;letter-spacing:1.7px;color:#64816f}.process-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:38px}.process-cards>div{border:1px solid #bed1c2;background:#e6eee4;border-radius:14px;padding:25px;height:248px}.process-cards span{font-size:42px;color:#447b62;letter-spacing:-2px}.process-cards h2{font-size:26px;line-height:1.2;font-weight:500;margin:20px 0 12px}.process-cards p{font-size:18px}.deck-nav{max-width:calc(100vw - 20px);width:max-content;flex-wrap:wrap;justify-content:center;box-shadow:0 8px 35px #0006}.deck-nav select{max-width:270px;min-width:0;padding:9px;border:1px solid #446150;border-radius:6px;background:#14221d;color:inherit;font:12px Arial}.deck-nav:before{content:"";position:absolute;bottom:-1px;height:2px;background:#a3ecc4;width:var(--progress,8.33%);left:0;border-radius:2px}.theme-cover .chapter,.theme-closing .chapter{color:#7cac94}@media(max-width:640px){.deck-nav{gap:6px;padding:7px;width:calc(100vw - 24px)}.deck-nav select{order:2;max-width:100%;width:100%}.deck-nav button,.deck-nav a{padding:8px;font-size:11px}}@media print{}'''
 
+CSS += '''
+.rubric-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;margin-top:18px}.rubric-card{background:#e8eee4;border:1px solid #bfd1c3;border-radius:12px;padding:15px 20px}.rubric-card:nth-child(even){background:#edf2ea}.rubric-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding-bottom:9px;border-bottom:1px solid #c4d5c7;margin-bottom:8px}.rubric-head h2{font-size:22px;font-weight:500;margin:0}.rubric-head span{font-size:14px;color:#286447;white-space:nowrap}.rubric-row{display:grid;grid-template-columns:27px 1fr;gap:8px;margin-top:10px}.rubric-id{color:#54846a;font-size:16px;font-variant-numeric:tabular-nums}.rubric-row b{display:block;font-size:17px;line-height:1.15;font-weight:500}.rubric-row small{display:block;font-size:15px;line-height:1.25;color:#536e62;margin-top:3px}.rubric-scale{border-left:3px solid #b78b54;padding:8px 13px;background:#eee9dd;font-size:16px;color:#655a43;margin:15px 0 0}.rubric-grid.spacious .rubric-card{padding:20px 23px}.rubric-grid.spacious .rubric-row{margin-top:10px}.rubric-grid.spacious .rubric-row b{font-size:19px}.rubric-grid.spacious .rubric-row small{font-size:16px}.rubric-grid.compact .rubric-row{margin-top:4px}.rubric-grid.compact .rubric-card{padding:10px 18px}.theme-rubric .content>p{font-size:19px}.theme-rubric .takeaway{font-size:16px}
+'''
+
 JS='''(()=>{
 const slides=[...document.querySelectorAll('article')],shell=document.querySelector('.deck-shell'),stage=document.querySelector('.deck-stage'),picker=document.querySelector('#slidePicker');let index=0;document.body.classList.add('deck-ready');
 function fit(){const scale=Math.max(.1,Math.min((innerWidth-24)/1280,(innerHeight-document.querySelector('.deck-nav').offsetHeight-45)/720));stage.style.transform='scale('+scale+')';shell.style.width=1280*scale+'px';shell.style.height=720*scale+'px';}
@@ -71,6 +75,15 @@ def render_deck(slides):
         if kind=='cover':body+='<div class="orbit-art">'+ORBIT+'</div>'
         elif kind=='network':body+=CHAIN_SVG.replace('<svg ', '<svg class="network-svg" ',1)
         elif kind=='process':body+='<div class="process-cards">'+''.join(f'<div><span>0{j}</span><h2>{html.escape(item["label"])}</h2><p>{html.escape(item["detail"])}</p></div>' for j,item in enumerate(v['items'],1))+'</div>'
+        elif kind=='rubric':
+            if v.get('scale'):body+='<div class="rubric-scale">'+html.escape(v['scale'])+'</div>'
+            body+='<div class="rubric-grid '+('spacious' if len(v['groups'])==2 else 'compact')+'">'
+            for group in v['groups']:
+                body+='<section class="rubric-card"><div class="rubric-head"><h2>'+html.escape(group['title'])+'</h2><span>до '+str(group['maximum'])+' баллов</span></div>'
+                for number,label,proof,path in group['items']:
+                    body+=f'<div class="rubric-row" data-criterion="{number}"><span class="rubric-id">{number:02}</span><div><b>{html.escape(label)}</b><small>{html.escape(proof)}</small></div></div>'
+                body+='</section>'
+            body+='</div>'
         elif kind=='cards':body+=cards(v['items'])
         elif kind=='matrix':
             cells=['<div></div><div class="matrix-axis">ОБЫЧНЫЕ УСЛОВИЯ</div><div class="matrix-axis">ОБЯЗАТЕЛЬНЫЙ СТРЕСС</div>']
@@ -96,7 +109,8 @@ def render_deck(slides):
         elif kind=='closing':body+='<div class="closing-strip"><span>ВХОДЫ</span><span>РЕШЕНИЯ</span><span>ПРОВЕРКИ</span><span>ЭКСПОРТ</span></div>'
         elif slide.get('rows'):
             body+='<table><thead><tr>'+''.join('<th>'+html.escape(x)+'</th>' for x in slide['headers'])+'</tr></thead><tbody>'+''.join('<tr>'+''.join('<td>'+html.escape(str(x))+'</td>' for x in row)+'</tr>' for row in slide['rows'])+'</tbody></table>'
-        articles.append(f'<article class="theme-{kind}" aria-label="Слайд {i}"><div class="page-index" aria-hidden="true">{i:02}</div><div class="chapter">{html.escape(slide.get("chapter",""))}</div><div class="kicker">{html.escape(slide["kicker"])}</div><h1>{html.escape(slide["title"])}</h1><div class="content">{body}</div><div class="takeaway">{html.escape(slide["takeaway"])}</div><footer><span>КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны</span><span>Страница {i} / {len(slides)}</span></footer></article>')
+        footer_label = 'КОСМОКОНТУР / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны'
+        articles.append(f'<article class="theme-{kind}" aria-label="Слайд {i}"><div class="page-index" aria-hidden="true">{i:02}</div><div class="chapter">{html.escape(slide.get("chapter",""))}</div><div class="kicker">{html.escape(slide["kicker"])}</div><h1>{html.escape(slide["title"])}</h1><div class="content">{body}</div><div class="takeaway">{html.escape(slide["takeaway"])}</div><footer><span>{footer_label}</span><span>Страница {i} / {len(slides)}</span></footer></article>')
     picker=''.join(f'<option value="{j}">{j+1:02} · {html.escape(slide["title"])}</option>' for j,slide in enumerate(slides))
     return '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Космоконтур — 4 минуты</title><style>'+CSS+'</style><body><div class="deck-shell"><div class="deck-stage">'+''.join(articles)+'</div></div><nav class="deck-nav" aria-label="Управление презентацией"><button id="prevSlide" aria-label="Предыдущий слайд">←</button><span id="slideCount" aria-live="polite"></span><button id="nextSlide" aria-label="Следующий слайд">→</button><select id="slidePicker" aria-label="Перейти к слайду">'+picker+'</select><button id="fullscreen">Полный экран</button><a href="/">Калькулятор ↗</a></nav><script>'+JS+'</script></body></html>'
 
@@ -147,6 +161,23 @@ def render_pptx(slides, destination):
                 text(s,x+.22,3.5,3.35,.6,f'0{j+1}',30,'447B62')
                 text(s,x+.22,4.22,3.35,.65,item['label'],21)
                 text(s,x+.22,4.82,3.35,.82,item['detail'],14,'536E62')
+        elif kind=='rubric':
+            compact=len(v['groups'])>2
+            if v.get('scale'):
+                rect(s,.7,2.48,11.95,.34,'EEE9DD')
+                text(s,.85,2.54,11.6,.23,v['scale'],11,'655A43')
+            for j,group in enumerate(v['groups']):
+                x=.7+(j%2)*6.08;y=(2.65 if j<2 else 4.9) if compact else 3.0
+                h=(2.1 if j<2 else 1.31) if compact else 3.18
+                rect(s,x,y,5.87,h,'E8EEE4' if j%2==0 else 'EDF2EA','BFD1C3')
+                text(s,x+.18,y+.12,4.05,.28,group['title'],15 if compact else 17)
+                text(s,x+4.37,y+.15,1.32,.22,f"до {group['maximum']} баллов",10,'286447')
+                line(s,x+.18,y+.44,x+5.69,y+.44,'C4D5C7',.6)
+                for k,(number,label,proof,path) in enumerate(group['items']):
+                    yy=y+.53+k*(.38 if compact else .51)
+                    text(s,x+.18,yy,.29,.22,f'{number:02}',11,'54846A')
+                    text(s,x+.55,yy,5.05,.21 if compact else .26,label,11.5 if compact else 14)
+                    text(s,x+.55,yy+(.20 if compact else .27),5.05,.18 if compact else .22,proof,10.5 if compact else 11)
         elif kind=='cards':
             for j,item in enumerate(v['items']):
                 x=.66+6.1*j;rect(s,x,3.26,5.87,2.55,'DDEADF' if j else 'EDF2EA','B6CBB8')
@@ -229,7 +260,7 @@ def render_pptx(slides, destination):
                     for p in cell.text_frame.paragraphs:p.font.name='Arial';p.font.size=Pt(15);p.font.color.rgb=RGBColor.from_string('E2F0E5' if ri==0 else '163F2D')
         line(s,.66,6.38,12.65,6.38,'36534A' if dark else 'C5D6CA',.7)
         text(s,.66,6.51,12,.65,d['takeaway'],14,'9EC5B1' if dark else '275E47')
-        text(s,.66,7.21,11,.22,'КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны',9,'6B8377')
+        text(s,.66,7.21,11,.22,'КОСМОКОНТУР / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны',9,'6B8377')
         text(s,11.65,7.21,1,.22,f'{i:02} / {len(slides)}',9,'6B8377')
         s.notes_slide.notes_text_frame.text=''  # The speech is a separate TXT, never projected.
     prs.save(str(destination))

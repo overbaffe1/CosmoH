@@ -90,7 +90,7 @@ def test_defense_generation_is_deterministic_and_does_not_mutate(tmp_path):
     a={p.name:p.read_bytes() for p in (tmp_path/'a').iterdir()}
     b={p.name:p.read_bytes() for p in (tmp_path/'b').iterdir()}
     assert a==b
-    assert a['PRESENTATION.html'].count(b'<article ')==8
+    assert a['PRESENTATION.html'].count(b'<article ')==10
     assert b'notesToggle' not in a['PRESENTATION.html']
     assert 'TALK_4_MIN.txt' in a
 
@@ -132,8 +132,26 @@ def test_four_minute_deck_shows_stack_and_calculator_without_prompts():
     from tools.talk import short_defense
     from tools.deck_design import render_deck
     slides=short_defense(summary_fixture())
-    assert len(slides)==8 and sum(s['seconds'] for s in slides)==240
+    assert len(slides)==10 and sum(s['seconds'] for s in slides)==240
     assert slides[2]['visual']['type']=='lab'
     assert 'FastAPI' in str(slides[1])
     rendered=render_deck(slides)
     assert 'Что говорить' not in rendered and 'data-note=' not in rendered
+
+
+def test_rubric_slides_cover_all_twenty_criteria_and_published_weights():
+    from pathlib import Path
+    from tools.rubric_slides import GROUPS, rubric_slides
+    from tools.deck_design import render_deck
+    groups=GROUPS
+    assert [g['maximum'] for g in groups]==[25,20,20,15,10,10]
+    assert sum(g['maximum'] for g in groups)==100
+    rows=[row for g in groups for row in g['items']]
+    assert [r[0] for r in rows]==list(range(1,21))
+    assert all(g['maximum']==5*len(g['items']) for g in groups)
+    root=Path(__file__).resolve().parents[1]
+    assert all((root/r[3]).is_file() for r in rows)
+    slides=rubric_slides();html=render_deck(slides)
+    for number in range(1,21):assert html.count(f'data-criterion="{number}"')==1
+    assert 'до +5' in html and 'Баллы определяет жюри' in html
+    assert '82/100' not in html and 'notesToggle' not in html

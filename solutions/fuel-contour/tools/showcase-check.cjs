@@ -42,8 +42,8 @@ const {chromium:pw}=require('playwright-core');const chromium=require('@sparticu
  await page.waitForSelector('.deck-ready');
  if((await page.locator('article:visible').count())!==1)throw Error('Presentation must show one slide');
  await page.locator('#nextSlide').click();await page.keyboard.press('ArrowRight');
- if((await page.locator('#slideCount').textContent())!=='3 / 8')throw Error('Slide navigation failed');
- await page.keyboard.press('End');if((await page.locator('#slideCount').textContent())!=='8 / 8')throw Error('Slide End key failed');
+ if((await page.locator('#slideCount').textContent())!=='3 / 10')throw Error('Slide navigation failed');
+ await page.keyboard.press('End');if((await page.locator('#slideCount').textContent())!=='10 / 10')throw Error('Slide End key failed');
  await page.keyboard.press('Home');
  await page.screenshot({path:path.join(root,'results/presentation-browser.png')});
  await page.goto(new URL('/evidence',process.env.SHOWCASE_URL||'http://127.0.0.1:8000/demo').href);

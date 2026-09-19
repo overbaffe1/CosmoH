@@ -122,7 +122,7 @@ PDF стр.7 изменил семантику финансового CSV: initi
 
 ## Подготовка защиты и редактируемых слайдов
 
-Основной `tools/report.py` теперь создаёт 8-слайдовую PRESENTATION.html, TALK_4_MIN.txt, SPEAKER_NOTES.md,
+Основной `tools/report.py` теперь создаёт 10-слайдовую PRESENTATION.html, TALK_4_MIN.txt, SPEAKER_NOTES.md,
 SUPPLY_CHAIN.svg и DECISION_BRIEF.json из того же suite; memo остаётся 10 страниц, comparison — 1.
 `SCORECARD.md` — субъективная внутренняя самооценка, не выход экономического ядра.
 
