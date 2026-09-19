@@ -56,6 +56,26 @@ def validate_plan(case, plan):
         raise InputError('OPENING_SOURCE_REQUIRED')
     if policy.get('allocation') != 'critical_first':
         raise InputError('UNSUPPORTED_ALLOCATION expected=critical_first')
+    for key in ('opening_order_day', 'opening_delivery_day'):
+        if key in policy:
+            integer(policy[key], key)
+    assumptions = plan.get('assumptions', {})
+    if not isinstance(assumptions, dict):
+        raise InputError('ASSUMPTIONS_MUST_BE_OBJECT')
+    discount = assumptions.get('discount_rate', {})
+    if not isinstance(discount, dict):
+        raise InputError('DISCOUNT_RATE_MUST_BE_OBJECT')
+    rate = discount.get('value')
+    number(rate, 'discount_rate.value')
+    if rate > 1:
+        raise InputError('DISCOUNT_RATE_OUT_OF_RANGE expected=0..1')
+    history = assumptions.get('preparation_availability', {})
+    sid = policy['opening_source_id']
+    if not isinstance(history, dict):
+        raise InputError('PREPARATION_AVAILABILITY_MUST_BE_OBJECT')
+    if sid not in history:
+        raise InputError(f'PREPARATION_AVAILABILITY_REQUIRED source={sid}')
+    integer(history[sid], f'preparation_availability.{sid}')
     if plan.get('assumptions', {}).get('timing') != '365-day-year;month=365/12;upper-lead;ceil':
         raise InputError('TIMING_ASSUMPTION_REQUIRED')
 
@@ -63,20 +83,51 @@ def validate_scenario(case, scenario):
     schema_validate(scenario, 'scenario')
     names = {s['name'] for s in case['supply_sources']}
     years = {str(d['year']) for d in case['demand']}
+    allowed = {'scenario_id', 'label_ru', 'status', 'demand_multiplier', 'critical_demand_multiplier',
+               'variable_price_multiplier', 'actual_delivery_share', 'loss_ceiling', 'notes', 'implementation_assumptions'}
+    if set(scenario)-allowed:
+        raise InputError(f'UNSUPPORTED_SCENARIO_FIELDS {sorted(set(scenario)-allowed)}')
     for section in ['demand_multiplier', 'critical_demand_multiplier', 'variable_price_multiplier', 'actual_delivery_share']:
-        for key, val in scenario.get(section, {}).items():
-            if isinstance(val, dict):
+        entries = scenario.get(section, {})
+        by_source = section in ('variable_price_multiplier', 'actual_delivery_share')
+        for key, val in entries.items():
+            if by_source and key != 'default':
                 if key not in names:
                     raise InputError(f'UNKNOWN_SCENARIO_SOURCE {key}')
-                for year, x in val.items():
-                    if str(year) not in years and year != 'default':
-                        raise InputError(f'UNKNOWN_SCENARIO_YEAR {year}')
-                    number(x, f'{section}.{key}.{year}')
-                    if section == 'actual_delivery_share' and x > 1:
-                        raise InputError('DELIVERY_SHARE_ABOVE_ONE')
+                if not isinstance(val, dict):
+                    raise InputError(f'SOURCE_MULTIPLIER_REQUIRES_YEAR_MAP {section}.{key}')
+                values = val.items()
             else:
                 if str(key) not in years and key != 'default':
                     raise InputError(f'UNKNOWN_SCENARIO_KEY {key}')
-                number(val, f'{section}.{key}')
-                if section == 'actual_delivery_share' and val > 1:
+                values = [(key, val)]
+            for year, x in values:
+                if str(year) not in years and year != 'default':
+                    raise InputError(f'UNKNOWN_SCENARIO_YEAR {year}')
+                number(x, f'{section}.{key}.{year}')
+                if section == 'actual_delivery_share' and x > 1:
                     raise InputError('DELIVERY_SHARE_ABOVE_ONE')
+    ceiling = scenario.get('loss_ceiling', {})
+    if type(ceiling.get('enabled', False)) is not bool:
+        raise InputError('LOSS_CEILING_ENABLED_MUST_BE_BOOLEAN')
+    if ceiling.get('enabled'):
+        integer(ceiling.get('from_year'), 'loss_ceiling.from_year', 2035)
+        number(ceiling.get('max_losses_divided_by_throughput'), 'loss_ceiling.max_losses_divided_by_throughput')
+        if ceiling['max_losses_divided_by_throughput'] > 1:
+            raise InputError('LOSS_CEILING_OUT_OF_RANGE')
+
+    overrides = scenario.get('implementation_assumptions', {})
+    if not isinstance(overrides, dict):
+        raise InputError('IMPLEMENTATION_ASSUMPTIONS_MUST_BE_OBJECT')
+    if overrides and (scenario['status'] != 'TEAM_ASSUMPTION' or not scenario['scenario_id'].startswith('TEAM_')):
+        raise InputError('IMPLEMENTATION_OVERRIDES_REQUIRE_TEAM_SCENARIO')
+    allowed = {'lead_time_policy', 'zbo_delay_days', 'emergency_base_definition'}
+    if set(overrides) - allowed:
+        raise InputError(f'UNKNOWN_IMPLEMENTATION_ASSUMPTION {sorted(set(overrides)-allowed)}')
+    if overrides.get('lead_time_policy', 'upper') not in ('lower', 'upper'):
+        raise InputError('LEAD_POLICY expected=lower|upper')
+    integer(overrides.get('zbo_delay_days', 0), 'zbo_delay_days', 0)
+    if overrides.get('zbo_delay_days', 0) > 730:
+        raise InputError('ZBO_DELAY_OUT_OF_RANGE expected=0..730 days')
+    if overrides.get('emergency_base_definition', 'any_planned') not in ('any_planned', 'majority'):
+        raise InputError('EMERGENCY_DEFINITION expected=any_planned|majority')

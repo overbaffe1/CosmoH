@@ -122,5 +122,6 @@ def test_csv_financial_total_includes_pre_horizon(case,plan,base,tmp_path):
         initial=float(next(csv.DictReader(f))['total_mln'])
     with (tmp_path/'summary.csv').open() as f:
         total=float(next(csv.DictReader(f))['total_cost_mln'])
-    assert annual+initial==pytest.approx(total)
+    assert annual==pytest.approx(total)
+    assert initial==pytest.approx(result['financial_breakdown'][0]['preparation_included_mln'])
     assert total==result['summary']['total_cost_mln']

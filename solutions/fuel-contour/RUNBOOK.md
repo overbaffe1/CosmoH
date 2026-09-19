@@ -63,7 +63,8 @@ NODE_PATH=/tmp/fuel-browser/node_modules node tools/browser-check.cjs
 ```
 
 Тест требует запущенный web-сервер, использует `APP_URL` (по умолчанию локальный порт 8000).
-Проверяет BASE, STRESS, изменение заказа, save/open, sensitivity, сравнение, ZIP, mobile overflow.
+Проверяет BASE/STRESS, prepared-stress, изменение заказа/инвестиций/ставки, save/open плана,
+research input copy и roundtrip полного проекта, sensitivity/parameters, матрицу 2×2, ZIP, mobile overflow.
 Печатает REPORT/COMPARISON/PRESENTATION в `results/*.pdf` и сохраняет скриншоты.
 В минимальном Linux без libnss3/libnspr4 можно распаковать пакетный `al2023.tar.br` из
 `@sparticuz/chromium/bin` и добавить его каталог `lib` в LD_LIBRARY_PATH; бинарники не коммитить.
@@ -86,3 +87,35 @@ diff -qr results/repro-a results/repro-b
 и provenance → обновить vendor и SHA256-манифест вместе → полный gate → сравнение до/после.
 Сейчас никакие файлы организатора не изменены; source tree не содержит готового participant engine.
 Полные trace/PNG/PDF от тестов в `results` игнорируются; сдаваемые небольшие PDF могут храниться в docs.
+
+## 8. Подготовленные планы и новые исследования v0.2
+
+```bash
+.venv/bin/python -m fuel.cli init --strategy lunar --design-scenario MANDATORY_STRESS --output results/lunar-stress-plan.json
+.venv/bin/python -m fuel.cli run --plan results/lunar-stress-plan.json --scenario MANDATORY_STRESS --output results/lunar-prepared
+.venv/bin/python tools/package.py
+```
+
+В `suite` автоматически создаются четыре плана, матрицы 2×2, changes, parameter sensitivity,
+последовательная атрибуция стресса, два варианта зависимости MC и roadmap. Полный список —
+[docs/STRESS_PROTOCOL.md](docs/STRESS_PROTOCOL.md). Команда package создаёт `results/fuel-contour-submission.zip` с README в корне,
+полными результатами, source/configs/tests/docs и манифестом SHA256; не выполняет upload.
+
+В UI:
+- варианты 03/04 — отдельно подготовленные stress планы, а не волшебная починка 01/02;
+- «Сравнить решения» показывает все четыре комбинации; экспорт включает comparison и changes;
+- реальная ставка и инвестиции редактируются формами, без изменения кода;
+- копия входов поддерживает demand/supply_sources и basis, не допускает удаления контрольных
+  строк и редактирования limits; BASE восстанавливает контроль, отдельная кнопка — исходный проект;
+- сохранить план — portable JSON; сохранить проект — план + scenario + research input patch.
+  Открытие поддерживает оба формата и result.json полного экспорта.
+
+PDF стр.7 изменил семантику финансового CSV: initial costs теперь уже включены в 2035.
+`pre_horizon.csv` — неаддитивная детализация. Сумма financial_breakdown.total_mln равна summary.total_cost_mln.
+При импорте legacy v0.1 плана добавьте явные preparation_availability из актуального примера
+и при необходимости opening_order_day / opening_delivery_day; отсутствие истории не подменяется
+непроверенным бесплатным stock. Команда init создаёт совместимый v0.2 файл.
+
+`tools/package.py` запускается из Git checkout и читает root workflow; архивировать сам себя
+из распакованного ZIP без Git не требуется. В распакованном пакете installation/reproduce/web
+работают из корня без CosmoH и без других решений. PDF-печать остаётся отдельным browser-шагом.

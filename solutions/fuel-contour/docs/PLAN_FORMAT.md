@@ -13,7 +13,10 @@
   своевременных предгоризонтных заказов.
 - `capacity_reservations[]`: `source_id`, `year`, `reserved_capacity_t`, `start_day`, `end_day`.
   Объём в поле reserved имеет смысл годовой мощности, доступный контрактный объём равен
-  `reserved × (end_day-start_day+1)/365`. Contract window должен покрывать окно поставок.
+  `reserved × (end_day-start_day+1)/365`, дополнительно ограниченный активной частью периода после ввода.
+  Начало reservation до commissioning — явное нарушение, не разрешение ранней поставки.
+  В schedule доступны declared/active fractions; TOP и reservation fee используют active fraction.
+  Contract window должен покрывать окно поставок.
 - `investments[]`: `investment_id`, `decision_day`, `commission_day`.
   Поддержаны организаторские EARTH_NEW/LUNAR_ISRU/ZBO. Опцион и exercise оплачиваются вместе
   в decision_day (явное ограничение выбранного контрактного дизайна). CAPEX берётся из CASE_INPUT.
@@ -52,6 +55,28 @@
 
 `source_schedule` различает заказ, предложенную после ограничений/сценария поставку, принятую поставку
 и отклонённый по хранилищу объём. Цена оплачивается по ordered/TOP, не по принятому объёму.
-В финансовый итог входят horizon costs плюс отдельный pre_horizon. CSV `pre_horizon.csv` и
-`summary.csv` позволяют восстановить полную сумму без потери первоначального финансирования.
+В financial_breakdown первого года уже включён подготовительный период (PDF стр.7).
+CSV `pre_horizon.csv` — неаддитивная детализация: второй раз к total не прибавляется.
+`summary.csv` согласован с суммой годовых total_mln.
 Вложенные объекты CSV сериализованы JSON, а не Python repr. Каждая строка несёт plan/scenario/units.
+
+
+## Расширение v0.2 по PDF постановщика
+
+- inventory_policy: `opening_order_day`, `opening_delivery_day` — модельные сутки подготовки.
+  Если они не заданы, используется прежняя явно описанная конвенция доставки day=-1 и своевременного заказа.
+  В `assumptions.preparation_availability` обязательна дата доступности выбранного начального канала.
+  Неверная подготовка не создаёт физического stock, хотя оплату заказа не отменяет.
+- `assumptions.discount_rate.value`: finite number 0..1, end-year convention к началу первого года.
+  Ставка одинакова для всех сравниваемых альтернатив, mismatch отвергается.
+- В контролируемом исследовании `implementation_assumptions` допускает `lead_time_policy` lower/upper,
+  `zbo_delay_days` 0..730, `emergency_base_definition` any_planned/majority. Только TEAM_* + TEAM_ASSUMPTION.
+  Это изменение интерпретации для исследования, не переписывание CASE_INPUT.
+- `research_case_patch` API: basis + необязательные demand/supply_sources. Контрольные строки нельзя
+  удалить, constraints неизменны. Изменённые строки получают TEAM_ASSUMPTION и before/after provenance.
+  До 20 лет и 30 источников в редакторе; размеры контрольного и демонстрационного набора проверены отдельно.
+- Новые KPI: nominal/discounted cost, cost_per_served_t_mln, commercial SL, min/max inventory.
+  При нулевом served стоимость тонны равна null, а не бесконечности.
+- Новые outputs: input_case, input_plan, roadmap, scenario_comparison, полный source contract metadata.
+- `fuel-project-v1` UI: format + plan + scenario_id + research_scenario + research_case_patch.
+  Plan JSON остаётся совместимым с organizer envelope; project — отдельная оболочка для контекста.

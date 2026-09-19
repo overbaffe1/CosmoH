@@ -4,15 +4,20 @@ import zipfile
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from jsonschema import ValidationError
 from .io import ROOT, load_case, load_scenario, export_result
 from .engine import evaluate
 from .planning import make_plan
-from .analysis import sensitivity, risk_analysis, monte_carlo
+from .datasets import research_copy
+from .project import calculate_project
+from .analysis import sensitivity, risk_analysis, monte_carlo, parameter_sensitivity, compare_decisions, stress_attribution, extension_demo
 from .validation import InputError
 
-app = FastAPI(title='Топливный космоконтур 2035', version='0.1.0')
+app = FastAPI(title='Топливный космоконтур 2035', version='0.2.0')
+
+app.mount('/assets', StaticFiles(directory=ROOT/'web'), name='assets')
 
 class Request(BaseModel):
     plan: dict
@@ -20,6 +25,9 @@ class Request(BaseModel):
     research_scenario: dict | None = None
     count: int = Field(default=100, ge=1, le=300)
     seed: int = 2035
+    dependence: str = 'independent'
+    research_case_patch: dict | None = None
+    alternative_plan: dict | None = None
 
 
 def scenario(req):
@@ -32,6 +40,15 @@ def scenario(req):
         raise InputError('Unknown control scenario')
     return load_scenario(req.scenario_id)
 
+
+def request_case(req):
+    case = load_case()
+    if req.research_case_patch is not None:
+        if req.research_scenario is None:
+            raise InputError('RESEARCH_COPY_REQUIRES_TEAM_SCENARIO')
+        scenario(req)  # Enforce TEAM namespace and status.
+        return research_copy(case, req.research_case_patch)
+    return case
 
 def guarded(fn):
     try:
@@ -46,24 +63,31 @@ def index():
 @app.get('/api/case')
 def case_data():
     return {'case': load_case(), 'reference_status': 'BLOCKED: upstream missing docs/ERRATA_AND_PROVENANCE.md',
-            'pdf_status': 'overbaffe1/orbit returned 404; three PDFs not reviewed'}
+            'pdf_status': 'All three orbit PDFs reviewed; audit: docs/PDF_AUDIT.md'}
 
 @app.get('/api/plans/{strategy}')
 def initial_plan(strategy: str):
-    if strategy not in ['earth', 'lunar']:
+    if strategy not in ['earth', 'lunar', 'earth-stress', 'lunar-stress']:
         raise HTTPException(404, 'Unknown plan')
-    return make_plan(load_case(), strategy)
+    return make_plan(load_case(), strategy.split('-')[0], load_scenario('MANDATORY_STRESS') if strategy.endswith('-stress') else None)
 
 @app.post('/api/run')
 def run(req: Request):
-    return guarded(lambda: evaluate(load_case(), req.plan, scenario(req)))
+    return guarded(lambda: evaluate(request_case(req), req.plan, scenario(req)))
 
 @app.post('/api/analysis/{kind}')
 def analysis(kind: str, req: Request):
     def calculate():
-        c = load_case()
+        c = request_case(req)
         if kind == 'sensitivity': return sensitivity(c, req.plan)
-        if kind == 'monte-carlo': return monte_carlo(c, req.plan, req.count, req.seed)
+        if kind == 'monte-carlo': return monte_carlo(c, req.plan, req.count, req.seed, req.dependence)
+        if kind == 'parameters': return parameter_sensitivity(c, req.plan)
+        if kind == 'attribution': return stress_attribution(c, req.plan, load_scenario('MANDATORY_STRESS'))
+        if kind == 'extension': return extension_demo(c, req.plan)
+        if kind == 'adaptation':
+            if req.alternative_plan is None:
+                raise InputError('ALTERNATIVE_PLAN_REQUIRED')
+            return compare_decisions(c, req.plan, req.alternative_plan, load_scenario('BASE'), load_scenario('MANDATORY_STRESS'))
         if kind == 'risks': return risk_analysis(c, req.plan, evaluate(c, req.plan, load_scenario('BASE'), trace=False))
         raise InputError('Unknown analysis')
     return guarded(calculate)
@@ -71,13 +95,19 @@ def analysis(kind: str, req: Request):
 @app.post('/api/export')
 def export(req: Request):
     def calculate():
-        c = load_case()
-        result = evaluate(c, req.plan, scenario(req))
-        result['risk_register'] = risk_analysis(c, req.plan, evaluate(c, req.plan, load_scenario('BASE'), trace=False))
+        c = request_case(req)
+        result = calculate_project(c, req.plan, scenario(req))
         with tempfile.TemporaryDirectory() as directory:
             export_result(result, directory)
+            if req.alternative_plan is not None:
+                from .io import save_json, export_table
+                comparison = compare_decisions(c, req.plan, req.alternative_plan, load_scenario('BASE'), load_scenario('MANDATORY_STRESS'))
+                save_json(Path(directory)/'decision_comparison.json', comparison)
+                export_table(Path(directory)/'decision_comparison.csv', comparison['matrix'])
+                export_table(Path(directory)/'decision_changes.csv', comparison['changes'])
             stream = io.BytesIO()
             with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as archive:
-                for p in sorted(Path(directory).iterdir()): archive.write(p, p.name)
+                for p in sorted(Path(directory).rglob('*')):
+                    if p.is_file(): archive.write(p, p.relative_to(directory).as_posix())
             return Response(stream.getvalue(), media_type='application/zip', headers={'Content-Disposition': 'attachment; filename="fuel-export.zip"'})
     return guarded(calculate)

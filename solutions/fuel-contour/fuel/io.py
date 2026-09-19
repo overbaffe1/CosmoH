@@ -56,8 +56,18 @@ def export_result(result, directory):
     directory = Path(directory)
     schema_validate(result, 'export')
     save_json(directory / 'result.json', result)
-    for key in ('yearly_balance', 'source_schedule', 'inventory_trace', 'financial_breakdown', 'constraint_checks', 'risk_register', 'pre_horizon', 'summary'):
-        rows = result[key]
+    if 'input_plan' in result:
+        save_json(directory / 'plan.json', result['input_plan'])
+        save_json(directory / 'case.json', result['input_case'])
+        save_json(directory / 'scenario.json', result['provenance']['scenario_definition'])
+    tables = {key: result[key] for key in ('yearly_balance', 'source_schedule', 'inventory_trace', 'financial_breakdown', 'constraint_checks', 'risk_register', 'pre_horizon', 'summary')}
+    for key in ('roadmap', 'scenario_comparison'):
+        if key in result:
+            tables[key] = result[key]
+    for key, value in result.get('input_case', {}).items():
+        if isinstance(value, list):
+            tables['case_'+key] = value
+    for key, rows in tables.items():
         if isinstance(rows, dict):
             rows = [rows]
         if not rows:
@@ -69,3 +79,15 @@ def export_result(result, directory):
             w = csv.DictWriter(f, fieldnames=fields)
             w.writeheader()
             w.writerows(rows)
+
+
+def export_table(path, rows):
+    """Additional experiment tables; nested values are standard JSON."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [{k: json.dumps(v, ensure_ascii=False, allow_nan=False) if isinstance(v, (list, dict)) else v for k, v in row.items()} for row in rows]
+    fields = list(dict.fromkeys(k for row in rows for k in row)) or ['status']
+    with path.open('w', encoding='utf-8', newline='') as stream:
+        writer = csv.DictWriter(stream, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)

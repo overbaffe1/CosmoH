@@ -8,8 +8,14 @@
     "delivery": "Uniform daily arrivals in decision window, before uniform daily demand",
     "contracts": "One annual contract/source; reservation and TOP prorated by contract window",
     "holding": "Exact within-day integral with uniform demand; no stock below zero",
-    "opening_stock": "Existing Earth channel available pre-horizon; separate paid 2034 contract arrives day -1",
-    "unfulfilled_orders": "Ordered fuel remains payable; no refund/mission penalties assumed",
+    "opening_stock": "PDF p.7 permits preparation; existing channel history declared below, costs recognized in first financial year",
+    "preparation_availability": {
+      "A": -730,
+      "B": -365,
+      "E": -365
+    },
+    "preparation_availability_basis": "TEAM_ASSUMPTION: existing channels operational before initial delivery; new plants cannot supply initial stock",
+    "unfulfilled_orders": "CASE_INPUT: PDF p.7, no automatic refund for stress ISRU short delivery; no extra penalties",
     "overflow": "Reject gross delivery before acceptance, record violation; ordered amount remains payable",
     "emergency_base": "Conservative: any positive scheduled Emergency order counts as a base-channel year",
     "zbo_commissioning": "Same day as full payment, not before 2036; construction duration unspecified",
@@ -18,10 +24,10 @@
     "discount_rate": {
       "value": 0,
       "unit": "real annual share",
-      "basis": "undiscounted comparison"
+      "basis": "undiscounted default; adjustable 0..1, end-year cash flow discounted to start of first year"
     },
     "zero_demand_service": 1,
-    "initial_plan_policy": "20 t opening; next-year stress reserve + 8 t buffer; cheapest available first"
+    "initial_plan_policy": "20 t opening; next-year stress reserve + 8 t buffer; fixed BASE-tariff source priority D(if selected)/A/C/B/E, not an optimizer"
   },
   "decisions": {
     "supply_orders": [
@@ -223,7 +229,9 @@
     "inventory_policy": {
       "opening_stock_t": 20.0,
       "opening_source_id": "A",
-      "allocation": "critical_first"
+      "allocation": "critical_first",
+      "opening_order_day": -366,
+      "opening_delivery_day": -1
     }
   }
 }

@@ -1,47 +1,37 @@
-# Карта требований — инкремент 1
+# Карта требований v0.2
 
-Контрольная версия: `SpaceEconomyPolicy/test_oil@cec6de1950276091689e71a67f9a875fb4ca6213`.
-Файлы `vendor/test_oil` — неизменённая копия. Проверка SHA256 в `tools/verify_vendor.py`.
+Основная карта после получения PDF: [PDF_AUDIT.md](PDF_AUDIT.md) — все 20 критериев с точными
+страницами, изменениями, реализациями и тестами. Протокол: [STRESS_PROTOCOL.md](STRESS_PROTOCOL.md).
 
-| README | Реализация | Проверка |
+| Разделы README организатора | Реализация | Проверка |
 |---|---|---|
-| 1–3, 24 цифровой контур | fuel/engine.py, cli.py, api.py, web/index.html | tests/test_integration.py, tools/check.sh |
-| 4–8 данные, граница, спрос | fuel/io.py, configs/*.json | schemas + test_vectors.py |
-| 9, 16 инвестиции | engine.evaluate, commissioning | test_engine.py |
-| 10–13 баланс, lead time, потери | engine.balance_step, evaluate | V01,V02,V06,V09,V10; суточные инварианты |
-| 14 физический резерв | engine.reserve_required | V07, годовые проверки |
-| 15 TOP/резервирование | engine.contract_cost | V03–V05, неполный год |
-| 17 финансы | financial_breakdown + pre_horizon | сверка суммы и восстановление плана |
-| 18–20 service/reliability/stress | engine.evaluate + scenarios | integration, сравнение неизменного плана |
-| 21 sensitivity/риски/MC | fuel/analysis.py | детерминизм, low/high, threshold |
-| 22 реестр рисков | analysis.risk_analysis | последствия вычисляются ядром |
-| 23 stakeholders/MCDA | analysis.mcda, docs | нормализация + sweep весов |
-| 25 export/save/open | io.export_result, CLI, API | JSON schema, CSV, roundtrip |
-| 26 ошибки | fuel/validation.py, constraint_checks | негативные примеры, NaN, неизвестный источник |
-| 27 контрольные векторы | tests/test_vectors.py | V01–V10 |
-| 28 расширяемость | data-driven sources, extension demo | Source-X/2041 на копии |
-| 29 графики | web SVG, tools/report.py | графики из результата, не константы |
-| 30 критерии | docs/REPORT.html, REQUIREMENTS.md | команды RUNBOOK |
-| 31 геополитика | analysis research scenarios | отдельный TEAM_GEO, восстановление BASE |
-| 32–34 сдача и научная трассируемость | README, RUNBOOK, docs | чистый клон + tools/check.sh |
+| 1–4 / 24: цифровой контур, происхождение | engine, io, datasets, api/cli/web | API E2E, immutable snapshot, roundtrip |
+| 5–8: граница, спрос, источники | load_case / research_copy | V09; input schemas, critical nesting |
+| 9 / 16: инвестиции | commissioning, investment editor, roadmap | invalid/late commissioning, OPEX, CAPEX |
+| 10–13: баланс и timing | balance_step, lead_days, evaluate | V01,V02,V06,V10; daily invariants |
+| 14: reserve | reserve_required, preparation checks | V07, PREPARATION_*, stress redesign |
+| 15 / 17: контракты и финансы | contract_cost, first-year prep, PV | V03–V05, partial year, first-year/PV tests |
+| 18–20: сервис / reliability / stress | yearly_balance, scenario config | isolation + attribution + 2×2 |
+| 21–22: sensitivity / risks / MC | analysis.py | intervals, threshold/crossover, residual, deterministic MC |
+| 23: stakeholders | stakeholder_effects, mcda | same-rate guard, physical metrics independent of weights |
+| 25–26: сохранение / ошибки | io, project, validation | complete ZIP, case CSV, reload, invalid numbers |
+| 27: vectors | tests/test_vectors.py | V01–V10 |
+| 28: развитие | research_copy, extension_demo | Source-X, 2041 explicit assumptions |
+| 29–30: визуализация / критерии | web, tools/report.py, PDF_AUDIT | browser / print / generated values |
+| 31: геополитика | TEAM scenario, price diversification | source/period/multiplier, price reset, residual |
+| 32–34: сдача / источники | README, RUNBOOK, package.py, bibliography | clean snapshot, standalone package, reproducibility |
 
-## Открытые вопросы / внешние блокеры
+## Открытые вопросы после сверки
 
-1. Три PDF из `overbaffe1/orbit` недоступны (GitHub 404). Содержание не учтено, соответствие PDF не подтверждено.
-2. Референсный валидатор падает на отсутствующем `docs/ERRATA_AND_PROVENANCE.md` в самом upstream. Не исправляем источник истины; полный gate остаётся красным.
-3. Допустимы ли предгоризонтные закупки у действующих земных каналов в 2034? Иначе физический резерв на начало 2035 не профинансировать в заданном горизонте. Модель явно учитывает отдельный предварительный контракт и его стоимость.
-4. «Emergency как основа»: численный порог не задан. Консервативно считаем любой плановый положительный заказ годом использования, отдельно исследуем альтернативную трактовку.
-5. Оплата при недопоставке: используется оплаченный заказ, без выдуманных возвратов/штрафов; требуется уточнение договора.
-6. Lunar ввод: поставки не раньше ввода + верхний lead time; Earth-New подготовка и контрактный lead time проверяются параллельно, а не складываются.
-7. У хранилища ZBO нет строительного lead time: принято включение в дату полной оплаты, не раньше 2036; это не инженерная оценка.
+- Внешний reference validator: отсутствующая upstream-ссылка, не подставлять фиктивный документ.
+- Конкретные исторические даты availability существующих каналов до горизонта — TEAM_ASSUMPTION.
+  Сам подготовительный период и отнесение расходов в первый год разрешены и заданы PDF стр.7.
+- Численный порог «Emergency как базовый канал» не дан. Conservative any-planned остаётся default;
+  majority проверяется только в research-сценарии.
+- Длительность строительства ZBO не дана. Исследованы 0/90/365 дней задержки, не физический прогноз.
+- Reliability input не определяет полную вероятностную модель. MC показывает условные результаты,
+  в том числе sensitivity к зависимости, без заявлений о реальных вероятностях.
 
-## Допущения, не CASE_INPUT
-
-365 дней/год, месяц=365/12 суток с округлением lead time вверх; верхняя граница диапазона.
-Суточная равномерная поставка внутри выбранного окна, поставки в начале суток, равномерная выдача в течение суток.
-Критический спрос обслуживается первым. Нулевой спрос имеет SL=1.
-TOP/резервирование — годовой контракт с явным start_day/end_day; объём prorate по длительности.
-При неисполнимости нет скрытого ремонта: физическая поставка ограничивается договором/мощностью,
-поздний заказ не поставляется, переполнение отклоняется до приёмки; каждый случай диагностируется.
-Предоплата заказов сохраняется даже при недопоставке/отказе приёмки. Дисконтирование не применяется.
-Плановый начальный запас приобретён отдельным контрактом, не повторяется в inflow горизонта.
+Вопрос об автоматическом refund ISRU закрыт PDF: его нет в контрольном стрессе.
+Не выдаём prepared-stress plan за реакцию после фиксации контрактов; новое решение должно
+быть принято к датам заказа, которые экспортируются в сравнении.
