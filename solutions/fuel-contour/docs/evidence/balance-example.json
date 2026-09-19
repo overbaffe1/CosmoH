@@ -1,0 +1,20 @@
+{
+  "status": "TEAM_ANALYSIS",
+  "plan_id": "TEAM_LUNAR",
+  "scenario_id": "BASE",
+  "row": {
+    "year": 2035,
+    "day": 1,
+    "opening_inventory_t": 20.0,
+    "delivered_t": 0.3019731018363415,
+    "losses_t": 0.013588789582635367,
+    "inventory_t": 20.014411709513983,
+    "capacity_t": 70.0,
+    "served_t": 0.273972602739726,
+    "shortage_t": 0,
+    "rejected_delivery_t": 0.0,
+    "reserve_threshold_t": 12.32876712328767
+  },
+  "independent_arithmetic_t": 20.014411709513983,
+  "residual_t": 0.0
+}

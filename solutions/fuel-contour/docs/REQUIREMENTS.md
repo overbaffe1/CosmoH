@@ -1,5 +1,8 @@
 # Карта требований v0.2
 
+Короткий маршрут по всем 20 пунктам: [JURY_GUIDE.md](JURY_GUIDE.md).
+Реальные снимки и методика замеров: [DEMO_EVIDENCE.md](DEMO_EVIDENCE.md).
+
 Основная карта после получения PDF: [PDF_AUDIT.md](PDF_AUDIT.md) — все 20 критериев с точными
 страницами, изменениями, реализациями и тестами. Протокол: [STRESS_PROTOCOL.md](STRESS_PROTOCOL.md).
 

@@ -170,6 +170,8 @@ CHAIN_SVG = '''<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="270"
 def write_assets(summary, dest=None):
     dest = Path(dest or ROOT/'docs');dest.mkdir(parents=True, exist_ok=True)
     slides = slides_for(summary)
+    from tools.evidence_publish import enrich_slides
+    slides = enrich_slides(slides, summary)
     from tools.deck_design import render_deck
     (dest/'PRESENTATION.html').write_text(render_deck(slides),encoding='utf-8')
     (dest/'SUPPLY_CHAIN.svg').write_text(CHAIN_SVG,encoding='utf-8')

@@ -46,5 +46,11 @@ const {chromium:pw}=require('playwright-core');const chromium=require('@sparticu
  await page.keyboard.press('End');if((await page.locator('#slideCount').textContent())!=='12 / 12')throw Error('Slide End key failed');
  await page.keyboard.press('Home');
  await page.screenshot({path:path.join(root,'results/presentation-browser.png')});
+ await page.goto(new URL('/evidence',process.env.SHOWCASE_URL||'http://127.0.0.1:8000').href);
+ await page.waitForFunction(()=>[...document.images].every(i=>i.complete&&i.naturalWidth>0));
+ if((await page.locator('img').count())!==5)throw Error('Evidence screenshots missing');
+ await page.screenshot({path:path.join(root,'results/evidence-gallery.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Evidence gallery mobile overflow');
  await browser.close();if(errors.length)throw Error(errors.join('\n'));console.log('PASS showcase: real numbers, 2x2, year, tour, recourse/delay, stale export, JSON/ZIP, mobile, presentation navigation');
 })().catch(e=>{console.error(e);process.exit(1)});

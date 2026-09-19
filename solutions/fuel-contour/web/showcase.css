@@ -40,3 +40,4 @@ html[data-theme=light] .balance-main small{color:var(--muted)}
 html[data-theme=dark] .rail-label,html[data-theme=dark] .rail-version,html[data-theme=dark] .edition,html[data-theme=dark] .range-labels,html[data-theme=dark] footer{color:#92a9b3}
 
 .controlbar{position:sticky;top:0;z-index:4;background:var(--bg);padding:10px 0;border-bottom:1px solid var(--border)}html{scroll-padding-top:105px}.control-intro #resetView{margin-left:auto;padding:7px 10px;font-size:10px;white-space:nowrap}@media(max-width:640px){.controlbar{position:static}.control-intro #resetView{margin-top:10px}html{scroll-padding-top:24px}}
+@media(max-width:640px){.rail{flex-direction:column;align-items:stretch;gap:12px}.rail nav{justify-content:space-between;flex-wrap:wrap}.rail nav a{padding:8px 5px}}

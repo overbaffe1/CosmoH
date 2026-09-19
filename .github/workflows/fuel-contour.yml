@@ -21,6 +21,8 @@ jobs:
       - run: .venv/bin/python tools/verify_vendor.py
       - run: .venv/bin/python -m pytest -q
       - run: .venv/bin/python -m fuel.cli suite --output results
+      - run: .venv/bin/python tools/evidence.py
+      - run: .venv/bin/python tools/evidence_publish.py
       - run: .venv/bin/python tools/report.py
       - uses: actions/upload-artifact@v4
         with:

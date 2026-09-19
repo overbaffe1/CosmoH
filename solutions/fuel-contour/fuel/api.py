@@ -133,6 +133,11 @@ def planner():
     return FileResponse(ROOT/'web/index.html')
 
 
+@app.get('/evidence')
+def evidence_gallery():
+    return FileResponse(ROOT/'docs/EVIDENCE.html')
+
+
 @app.get('/presentation')
 def presentation():
     return FileResponse(ROOT/'docs/PRESENTATION.html')
