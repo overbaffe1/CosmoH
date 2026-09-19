@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -56,9 +57,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--data-dir", required=True)
     ap.add_argument("--weights", default=None)
     ap.add_argument("--ablation", action="store_true")
-    ap.add_argument("--blob-filter", default=None, help="путь к weights/blob_filter.pkl")
+    ap.add_argument("--blob-filter", default=None, help="путь к weights/blob_filter.pkl "
+                    "(по умолчанию — из weights.json при af_mode=blobs, как в инференсе)")
     ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default=None,
                     help="где считать модель степени поражения (по умолчанию — как обучена)")
+    ap.add_argument("--strict", action="store_true",
+                    help="строго: если веса требуют модель/фильтр, а файл не загрузился — "
+                    "остановиться с ошибкой, а не молча считать другой конфигурацией")
     args = ap.parse_args(argv)
 
     resolved = find_data_dir(args.data_dir, prefer="masks")
@@ -73,10 +78,22 @@ def main(argv: list[str] | None = None) -> int:
     af_params = af_module.to_params(weights.get("af", {}))
     bs_params = bs_module.to_params(weights.get("bs", {}))
 
-    from fires.blobfilter import BlobFilter
-
-    blob_filter = BlobFilter.load(args.blob_filter) if args.blob_filter else None
-    severity_model = load_severity_model(weights, args.weights, args.device)
+    blob_filter = load_blob_filter(weights, args.weights, args.blob_filter, strict=args.strict)
+    severity_model = load_severity_model(weights, args.weights, args.device, strict=args.strict)
+    print("=== Активная конфигурация ===")
+    print(f"    AF: af_mode={weights.get('af_mode')}, "
+          f"фильтр очагов={'загружен' if blob_filter is not None else 'нет (только правила)'}")
+    if weights.get("bs_mode") == "model":
+        if severity_model is not None:
+            feats = getattr(severity_model, "feature_names", ()) or ()
+            print(f"    BS: bs_mode=model, модель {weights.get('severity_model')} загружена "
+                  f"(backend={getattr(severity_model, 'backend', '?')}, "
+                  f"device={getattr(severity_model, 'device', '?')}, признаков={len(feats)})")
+        else:
+            print("    BS: bs_mode=model, но модель НЕ загрузилась — фактически считаются пороги "
+                  "(см. предупреждение выше; --strict остановил бы оценку)")
+    else:
+        print(f"    BS: bs_mode={weights.get('bs_mode')} (пороги dNBR по покровам)")
     print("=== Итоговая конфигурация ===")
     print(json.dumps(evaluate(dataset, af_params, bs_params, blob_filter=blob_filter,
                               severity_model=severity_model), ensure_ascii=False, indent=2))
@@ -92,7 +109,47 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def load_severity_model(weights: dict, weights_path: str | Path | None, device: str | None = None) -> "SeverityModel | None":
+def load_blob_filter(weights: dict, weights_path: str | Path | None, cli_path: str | None = None,
+                     strict: bool = False):
+    """Загружает фильтр очагов: явный путь из CLI, иначе — из весов при ``af_mode=blobs``.
+
+    До исправления ``evaluate.py`` брал фильтр только из флага, а ``inference.py`` — из весов,
+    поэтому в режиме ``blobs`` оценка и инференс считали разные конфигурации.
+    """
+
+    from fires.blobfilter import BlobFilter
+
+    if cli_path:
+        return BlobFilter.load(cli_path)
+    if weights.get("af_mode") != "blobs":
+        return None
+    name = weights.get("blob_filter")
+    base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parent / "weights"
+    if not name:
+        msg = "[warn] af_mode=blobs, но путь к фильтру в весах не указан — считаю без фильтра"
+        if strict:
+            raise RuntimeError(msg)
+        print(msg, file=sys.stderr)
+        return None
+    path = base / name
+    if not path.exists():
+        msg = f"[warn] фильтр очагов {path} не найден — считаю без фильтра"
+        if strict:
+            raise RuntimeError(msg)
+        print(msg, file=sys.stderr)
+        return None
+    try:
+        return BlobFilter.load(path)
+    except Exception as exc:
+        msg = f"[warn] фильтр очагов {path} не загрузился ({exc}) — считаю без фильтра"
+        if strict:
+            raise RuntimeError(msg)
+        print(msg, file=sys.stderr)
+        return None
+
+
+def load_severity_model(weights: dict, weights_path: str | Path | None, device: str | None = None,
+                        strict: bool = False) -> "SeverityModel | None":
     """Загружает обученную модель степени поражения, если решение выбрало режим ``model``."""
 
     name = weights.get("severity_model")
@@ -101,6 +158,10 @@ def load_severity_model(weights: dict, weights_path: str | Path | None, device: 
     base = Path(weights_path).parent if weights_path else Path(__file__).resolve().parent / "weights"
     path = base / name
     if not path.exists():
+        msg = f"[warn] модель степени поражения {path} не найдена — считаю на порогах"
+        if strict:
+            raise RuntimeError(msg)
+        print(msg, file=sys.stderr)
         return None
     try:
         model = SeverityModel.load(path)
@@ -110,7 +171,10 @@ def load_severity_model(weights: dict, weights_path: str | Path | None, device: 
             model.device = resolve_device(device)
         return model
     except Exception as exc:  # модель собрана другой версией sklearn — считаем на порогах
-        print(f"[warn] модель степени поражения {path} не загрузилась ({exc}); работаю на порогах", file=sys.stderr)
+        msg = f"[warn] модель степени поражения {path} не загрузилась ({exc}); работаю на порогах"
+        if strict:
+            raise RuntimeError(msg)
+        print(msg, file=sys.stderr)
         return None
 
 

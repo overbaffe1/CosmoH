@@ -604,6 +604,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.af_tune else []
     if args.val_chips:
         bs_val = bs_val[:args.val_chips]
+    # --- диагностика утечки в точку отсчёта: веса собирались на каноническом сплите
+    # (val_frac=0.25, SEED) — см. раздел split в weights.json. Сплиты с одним сидом вложенные,
+    # поэтому при другом --val-frac часть текущего val входила в обучение baseline-модели,
+    # её оценка оптимистична, а сравнение «было → стало» смещено в пользу весов.
+    leaked_val: list[str] = []
+    if args.seed == SEED and abs(args.val_frac - 0.25) > 1e-9:
+        canon_train, _canon_val = _split_ids(dataset, "bs", 0.25, SEED)
+        canon_set = set(canon_train)
+        leaked_val = [c for c in bs_val if c in canon_set]
+        if leaked_val:
+            print(f"    ВНИМАНИЕ: {len(leaked_val)} из {len(bs_val)} отложенных чипов входят в обучение "
+                  f"канонического сплита (val_frac=0.25) — точка отсчёта из весов на них оптимистична, "
+                  f"а сравнение «было → стало» смещено в пользу весов")
     if not bs_train:
         print(f"\nBS-чипов для обучения не нашлось (в каталоге {resolved} их "
               f"{len(dataset.chip_ids('bs'))}) — проверьте, что это обучающая часть с масками")
@@ -989,6 +1002,9 @@ def main(argv: list[str] | None = None) -> int:
                      and best["objective"] <= baseline["objective"] + IMPROVEMENT_EPS)
     best_model: sev.SeverityModel = best["model"]
     report = {"device": device, "f1_af": f1_af, "f1_source": f1_source,
+              "split": {"seed": args.seed, "val_frac": args.val_frac,
+                        "train_ids": list(bs_train), "val_ids": list(bs_val),
+                        "canonical_overlap_ids": list(leaked_val)},
               "af_tune": af_history,
               "baseline": baseline, "best": {"cycle": best["cycle"], "name": best["name"],
                                              "iou_burn": best["iou_burn"], "miou_sev": best["miou_sev"],
@@ -1001,7 +1017,12 @@ def main(argv: list[str] | None = None) -> int:
                            "note": "переобучение на всех чипах: оценка на отложенной части оптимистична"}
     if baseline is not None:
         base_projection = projected_score(f1_af, baseline["iou_burn"], baseline["miou_sev"])
-        print(f"отложенные {len(val_cache)} чипов (честное сравнение, эти чипы модель не видела): "
+        if leaked_val:
+            honesty = (f"ВНИМАНИЕ: {len(leaked_val)} из {len(bs_val)} чипов val точка отсчёта "
+                       f"видела в обучении — сравнение смещено в пользу весов")
+        else:
+            honesty = "честное сравнение, эти чипы модель не видела"
+        print(f"отложенные {len(val_cache)} чипов ({honesty}): "
               f"было IoU={baseline['iou_burn']:.4f} mIoU={baseline['miou_sev']:.4f} "
               f"→ стало IoU={best['iou_burn']:.4f} mIoU={best['miou_sev']:.4f}")
         print(f"проекция Score на отложенной части: {base_projection:.5f} → {best['score']:.5f} "
@@ -1053,6 +1074,10 @@ def main(argv: list[str] | None = None) -> int:
               "    Это нормальный исход: значит текущая модель уже лучше всего, что нашёл перебор.\n"
               "    На сабмит идёт прежняя модель, файлы в weights не тронуты — пересобирать ничего "
               "не нужно.")
+        if leaked_val:
+            print(f"    НО: сравнение смещено — {len(leaked_val)} чипов val входят в обучение весов, "
+                  f"поэтому вердикт «веса лучше» может быть артефактом утечки. Для честного отбора "
+                  f"перезапустите цикл на каноническом сплите (без --val-frac 0.5).")
 
     # смещения классов должны попасть в файл модели: иначе инференс их не применит
     best_model.class_bias = None if best.get("bias") is None else tuple(best["bias"])
