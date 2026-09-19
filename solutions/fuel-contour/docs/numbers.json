@@ -1,0 +1,1209 @@
+{
+  "case_version": "cec6de1950276091689e71a67f9a875fb4ca6213",
+  "status": "TEAM_ANALYSIS",
+  "strategies": {
+    "earth": {
+      "plan_id": "TEAM_EARTH",
+      "base": {
+        "total_cost_mln": 11071.926209100871,
+        "shortage_t": 0.0,
+        "min_total_service": 0.999999999999997,
+        "min_critical_service": 0.9999999999999941,
+        "violations": 0
+      },
+      "stress": {
+        "total_cost_mln": 11593.164772226875,
+        "shortage_t": 80.7054794520558,
+        "min_total_service": 0.8695652173913111,
+        "min_critical_service": 0.999999999999992,
+        "violations": 4
+      },
+      "yearly_base": [
+        {
+          "year": 2035,
+          "opening_inventory_t": 20.0,
+          "demand_t": 100.0,
+          "critical_demand_t": 80.0,
+          "delivered_t": 110.220182170264,
+          "losses_t": 4.9599081976618775,
+          "served_t": 100.00000000000071,
+          "served_critical_t": 79.99999999999976,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 25.534246575343385,
+          "reserve_required_t": 12.32876712328767,
+          "closing_inventory_t": 25.26027397260366,
+          "total_service_level": 1.000000000000007,
+          "critical_service_level": 0.999999999999997
+        },
+        {
+          "year": 2036,
+          "opening_inventory_t": 25.26027397260366,
+          "demand_t": 140.0,
+          "critical_demand_t": 105.0,
+          "delivered_t": 147.93965947534733,
+          "losses_t": 1.7752759137041665,
+          "served_t": 140.00000000000045,
+          "served_critical_t": 105.0000000000007,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 25.26027397260366,
+          "max_inventory_t": 31.80821917808267,
+          "reserve_required_t": 17.26027397260274,
+          "closing_inventory_t": 31.424657534247054,
+          "total_service_level": 1.0000000000000033,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2037,
+          "opening_inventory_t": 31.424657534247054,
+          "demand_t": 190.0,
+          "critical_demand_t": 135.0,
+          "delivered_t": 204.47423881093763,
+          "losses_t": 2.4536908657312493,
+          "served_t": 190.0000000000015,
+          "served_critical_t": 135.00000000000017,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 31.424657534247054,
+          "max_inventory_t": 43.965753424656185,
+          "reserve_required_t": 23.424657534246574,
+          "closing_inventory_t": 43.445205479450706,
+          "total_service_level": 1.000000000000008,
+          "critical_service_level": 1.0000000000000013
+        },
+        {
+          "year": 2038,
+          "opening_inventory_t": 43.445205479450706,
+          "demand_t": 250.0,
+          "critical_demand_t": 170.0,
+          "delivered_t": 263.08163718041067,
+          "losses_t": 3.1569796461649475,
+          "served_t": 250.00000000000117,
+          "served_critical_t": 169.999999999999,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 43.445205479450706,
+          "max_inventory_t": 54.05479452054556,
+          "reserve_required_t": 30.82191780821918,
+          "closing_inventory_t": 53.369863013696246,
+          "total_service_level": 1.0000000000000047,
+          "critical_service_level": 0.9999999999999941
+        },
+        {
+          "year": 2039,
+          "opening_inventory_t": 53.369863013696246,
+          "demand_t": 320.0,
+          "critical_demand_t": 210.0,
+          "delivered_t": 333.9318396095633,
+          "losses_t": 4.007182075314705,
+          "served_t": 319.99999999999903,
+          "served_critical_t": 210.0000000000014,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 53.369863013696246,
+          "max_inventory_t": 64.17123287670891,
+          "reserve_required_t": 39.45205479452055,
+          "closing_inventory_t": 63.29452054794179,
+          "total_service_level": 0.999999999999997,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2040,
+          "opening_inventory_t": 63.29452054794179,
+          "demand_t": 390.0,
+          "critical_demand_t": 250.0,
+          "delivered_t": 394.7368421052648,
+          "losses_t": 4.736842105263168,
+          "served_t": 390.00000000000296,
+          "served_critical_t": 250.00000000000117,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 63.29452054794179,
+          "max_inventory_t": 64.36301369862672,
+          "reserve_required_t": 48.082191780821915,
+          "closing_inventory_t": 63.29452054794179,
+          "total_service_level": 1.0000000000000075,
+          "critical_service_level": 1.0000000000000047
+        }
+      ],
+      "yearly_stress": [
+        {
+          "year": 2035,
+          "opening_inventory_t": 20.0,
+          "demand_t": 100.0,
+          "critical_demand_t": 80.0,
+          "delivered_t": 110.220182170264,
+          "losses_t": 4.9599081976618775,
+          "served_t": 100.00000000000071,
+          "served_critical_t": 79.99999999999976,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 25.534246575343385,
+          "reserve_required_t": 12.32876712328767,
+          "closing_inventory_t": 25.26027397260366,
+          "total_service_level": 1.000000000000007,
+          "critical_service_level": 0.999999999999997
+        },
+        {
+          "year": 2036,
+          "opening_inventory_t": 25.26027397260366,
+          "demand_t": 140.0,
+          "critical_demand_t": 105.0,
+          "delivered_t": 147.93965947534733,
+          "losses_t": 1.7752759137041665,
+          "served_t": 140.00000000000045,
+          "served_critical_t": 105.0000000000007,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 25.26027397260366,
+          "max_inventory_t": 31.80821917808267,
+          "reserve_required_t": 17.26027397260274,
+          "closing_inventory_t": 31.424657534247054,
+          "total_service_level": 1.0000000000000033,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2037,
+          "opening_inventory_t": 31.424657534247054,
+          "demand_t": 190.0,
+          "critical_demand_t": 135.0,
+          "delivered_t": 204.47423881093763,
+          "losses_t": 2.4536908657312493,
+          "served_t": 190.0000000000015,
+          "served_critical_t": 135.00000000000017,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 31.424657534247054,
+          "max_inventory_t": 43.965753424656185,
+          "reserve_required_t": 23.424657534246574,
+          "closing_inventory_t": 43.445205479450706,
+          "total_service_level": 1.000000000000008,
+          "critical_service_level": 1.0000000000000013
+        },
+        {
+          "year": 2038,
+          "opening_inventory_t": 43.445205479450706,
+          "demand_t": 287.5,
+          "critical_demand_t": 195.49999999999997,
+          "delivered_t": 263.08163718041067,
+          "losses_t": 3.1569796461649475,
+          "served_t": 287.4999999999999,
+          "served_critical_t": 195.4999999999984,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 15.86986301369731,
+          "max_inventory_t": 44.1573278288596,
+          "reserve_required_t": 35.445205479452056,
+          "closing_inventory_t": 15.86986301369731,
+          "total_service_level": 0.9999999999999996,
+          "critical_service_level": 0.999999999999992
+        },
+        {
+          "year": 2039,
+          "opening_inventory_t": 15.86986301369731,
+          "demand_t": 368.0,
+          "critical_demand_t": 241.49999999999997,
+          "delivered_t": 333.9318396095633,
+          "losses_t": 4.007182075314705,
+          "served_t": 345.7945205479435,
+          "served_critical_t": 241.5000000000018,
+          "shortage_t": 22.20547945205624,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 0,
+          "max_inventory_t": 16.773766185024016,
+          "reserve_required_t": 45.36986301369863,
+          "closing_inventory_t": 0,
+          "total_service_level": 0.9396590232281072,
+          "critical_service_level": 1.0000000000000075
+        },
+        {
+          "year": 2040,
+          "opening_inventory_t": 0,
+          "demand_t": 448.49999999999994,
+          "critical_demand_t": 287.5,
+          "delivered_t": 394.7368421052648,
+          "losses_t": 4.736842105263168,
+          "served_t": 390.00000000000296,
+          "served_critical_t": 287.4999999999999,
+          "shortage_t": 58.49999999999955,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 0,
+          "max_inventory_t": 1.0684931506849316,
+          "reserve_required_t": 55.2945205479452,
+          "closing_inventory_t": 0,
+          "total_service_level": 0.8695652173913111,
+          "critical_service_level": 0.9999999999999996
+        }
+      ],
+      "costs_base": [
+        {
+          "year": 2035,
+          "procurement_mln": 683.3651294556408,
+          "reservation_mln": 49.5990819766191,
+          "holding_mln": 16.397516982548648,
+          "fixed_opex_mln": 0.0,
+          "capex_mln": 360.0,
+          "total_mln": 1109.3617284148086
+        },
+        {
+          "year": 2036,
+          "procurement_mln": 917.2258887471577,
+          "reservation_mln": 66.57284676390661,
+          "holding_mln": 20.550737474198282,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 180.0,
+          "total_mln": 1196.3494729852625
+        },
+        {
+          "year": 2037,
+          "procurement_mln": 1280.7670955576507,
+          "reservation_mln": 89.84227164328102,
+          "holding_mln": 27.15240382811002,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 0,
+          "total_mln": 1409.7617710290417
+        },
+        {
+          "year": 2038,
+          "procurement_mln": 1696.8796239809217,
+          "reservation_mln": 107.42449115412346,
+          "holding_mln": 35.109788703320106,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 0,
+          "total_mln": 1851.4139038383653
+        },
+        {
+          "year": 2039,
+          "procurement_mln": 2224.9933725250953,
+          "reservation_mln": 126.5897759414342,
+          "holding_mln": 42.32458322386729,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 0,
+          "total_mln": 2405.9077316903968
+        },
+        {
+          "year": 2040,
+          "procurement_mln": 2766.1578947368425,
+          "reservation_mln": 135.71052631578948,
+          "holding_mln": 45.95671232876443,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 0,
+          "total_mln": 2959.8251333813964
+        }
+      ],
+      "risks": [
+        {
+          "risk_id": "LUNAR_OUTAGE",
+          "event": "Plant unavailable for one year",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "actual_delivery_share.Lunar-ISRU",
+          "period": 2038,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 0.0,
+          "scenario": {
+            "scenario_id": "TEAM_LUNAR_OUTAGE",
+            "status": "TEAM_ASSUMPTION",
+            "actual_delivery_share": {
+              "Lunar-ISRU": {
+                "2038": 0.0
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 0.0,
+          "financial_consequence_mln": 0.0,
+          "service_consequence": 0.0,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "ISRU operator",
+          "mitigation": "Earth diversification",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 11297.632676862473,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          },
+          "mitigation_incremental_cost_mln": 225.70646776160174,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 11071.926209100871,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          }
+        },
+        {
+          "risk_id": "GEO",
+          "event": "Illustrative trade restriction cost shock, not a forecast",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "variable_price_multiplier.Earth-Core",
+          "period": 2039,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 1.5,
+          "scenario": {
+            "scenario_id": "TEAM_GEO",
+            "status": "TEAM_ASSUMPTION",
+            "variable_price_multiplier": {
+              "Earth-Core": {
+                "2039": 1.5
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 0.0,
+          "financial_consequence_mln": 589.0000000000018,
+          "service_consequence": 0.0,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "Procurement lead",
+          "mitigation": "Switch contracts subject to lead time",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 11886.632676862473,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          },
+          "mitigation_incremental_cost_mln": 225.70646776159992,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 11660.926209100873,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          }
+        },
+        {
+          "risk_id": "EARTH_DISRUPTION",
+          "event": "One-year partial delivery interruption",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "actual_delivery_share.Earth-Core",
+          "period": 2039,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 0.5,
+          "scenario": {
+            "scenario_id": "TEAM_EARTH_DISRUPTION",
+            "status": "TEAM_ASSUMPTION",
+            "actual_delivery_share": {
+              "Earth-Core": {
+                "2039": 0.5
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 30.565479452056955,
+          "financial_consequence_mln": -75.4694489747435,
+          "service_consequence": -0.09551712328767115,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "Logistics lead",
+          "mitigation": "Physical stock and alternate sources",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 11204.249549186408,
+            "shortage_t": 10.565479452054612,
+            "min_total_service": 0.9669828767123306,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 2
+          },
+          "mitigation_incremental_cost_mln": 207.79278906028048,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 10996.456760126128,
+            "shortage_t": 30.565479452056955,
+            "min_total_service": 0.9044828767123259,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 2
+          }
+        }
+      ],
+      "sensitivity": {
+        "status": "TEAM_ASSUMPTION",
+        "parameter": "uniform demand multiplier all years",
+        "range_basis": "illustrative 0.8..1.25; low/high organizer vectors reported separately",
+        "points": [
+          {
+            "factor": 0.8,
+            "total_cost_mln": 11286.187986806224,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999921,
+            "min_critical_service": 0.9999999999999966,
+            "violations": 4
+          },
+          {
+            "factor": 0.9,
+            "total_cost_mln": 11235.69202188541,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999902,
+            "min_critical_service": 0.9999999999999948,
+            "violations": 3
+          },
+          {
+            "factor": 1.0,
+            "total_cost_mln": 11071.926209100871,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          },
+          {
+            "factor": 1.05,
+            "total_cost_mln": 10959.411303077646,
+            "shortage_t": 6.205479452055389,
+            "min_total_service": 0.9848462040242887,
+            "min_critical_service": 0.9999999999999937,
+            "violations": 4
+          },
+          {
+            "factor": 1.1,
+            "total_cost_mln": 10909.477276374018,
+            "shortage_t": 75.70547945205398,
+            "min_total_service": 0.9090909090909158,
+            "min_critical_service": 0.9999999999999977,
+            "violations": 8
+          },
+          {
+            "factor": 1.15,
+            "total_cost_mln": 10899.168832297522,
+            "shortage_t": 145.20547945205442,
+            "min_total_service": 0.8695652173913111,
+            "min_critical_service": 0.999999999999992,
+            "violations": 9
+          },
+          {
+            "factor": 1.2,
+            "total_cost_mln": 10895.216920193425,
+            "shortage_t": 214.7054794520551,
+            "min_total_service": 0.8333333333333397,
+            "min_critical_service": 0.9999999999999902,
+            "violations": 10
+          },
+          {
+            "factor": 1.25,
+            "total_cost_mln": 10892.912309369816,
+            "shortage_t": 284.20547945205453,
+            "min_total_service": 0.800000000000006,
+            "min_critical_service": 0.9999999999999937,
+            "violations": 10
+          }
+        ],
+        "service_failure_bracket": [
+          1.054410696029663,
+          1.0544109344482422
+        ],
+        "threshold_status": "bracketed",
+        "threshold_search_bounds": [
+          1,
+          2
+        ],
+        "low_high": {
+          "low": {
+            "total_cost_mln": 11286.187986806224,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999921,
+            "min_critical_service": 0.9999999999999966,
+            "violations": 4
+          },
+          "high": {
+            "total_cost_mln": 10909.366214078766,
+            "shortage_t": 219.70547945205357,
+            "min_total_service": 0.800000000000006,
+            "min_critical_service": 0.9999999999999937,
+            "violations": 8
+          }
+        }
+      },
+      "monte_carlo": {
+        "status": "TEAM_ASSUMPTION",
+        "distribution": "Independent source-year Bernoulli full-year availability; reliability interpreted as success probability",
+        "limitation": "Illustrative interpretation, not calibrated outages; no real-world probability claim. Correlations and partial outages excluded.",
+        "seed": 2035,
+        "count": 100,
+        "service_failure_fraction": 0.34,
+        "wilson_95_conditional_interval": [
+          0.25461379497543,
+          0.43722454341689065
+        ],
+        "mean_shortage_t": 39.90236986301406,
+        "p95_shortage_t": 144.27479452054672
+      }
+    },
+    "lunar": {
+      "plan_id": "TEAM_LUNAR",
+      "base": {
+        "total_cost_mln": 10829.678567071034,
+        "shortage_t": 0.0,
+        "min_total_service": 0.999999999999997,
+        "min_critical_service": 0.9999999999999941,
+        "violations": 0
+      },
+      "stress": {
+        "total_cost_mln": 11236.127294051412,
+        "shortage_t": 163.69747945205523,
+        "min_total_service": 0.8159909172126254,
+        "min_critical_service": 0.999999999999992,
+        "violations": 5
+      },
+      "yearly_base": [
+        {
+          "year": 2035,
+          "opening_inventory_t": 20.0,
+          "demand_t": 100.0,
+          "critical_demand_t": 80.0,
+          "delivered_t": 110.220182170264,
+          "losses_t": 4.9599081976618775,
+          "served_t": 100.00000000000071,
+          "served_critical_t": 79.99999999999976,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 25.534246575343385,
+          "reserve_required_t": 12.32876712328767,
+          "closing_inventory_t": 25.26027397260366,
+          "total_service_level": 1.000000000000007,
+          "critical_service_level": 0.999999999999997
+        },
+        {
+          "year": 2036,
+          "opening_inventory_t": 25.26027397260366,
+          "demand_t": 140.0,
+          "critical_demand_t": 105.0,
+          "delivered_t": 147.93965947534733,
+          "losses_t": 1.7752759137041665,
+          "served_t": 140.00000000000045,
+          "served_critical_t": 105.0000000000007,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 25.26027397260366,
+          "max_inventory_t": 31.80821917808267,
+          "reserve_required_t": 17.26027397260274,
+          "closing_inventory_t": 31.424657534247054,
+          "total_service_level": 1.0000000000000033,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2037,
+          "opening_inventory_t": 31.424657534247054,
+          "demand_t": 190.0,
+          "critical_demand_t": 135.0,
+          "delivered_t": 204.47423881093763,
+          "losses_t": 2.4536908657312493,
+          "served_t": 190.0000000000015,
+          "served_critical_t": 135.00000000000017,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 31.424657534247054,
+          "max_inventory_t": 43.965753424656185,
+          "reserve_required_t": 23.424657534246574,
+          "closing_inventory_t": 43.445205479450706,
+          "total_service_level": 1.000000000000008,
+          "critical_service_level": 1.0000000000000013
+        },
+        {
+          "year": 2038,
+          "opening_inventory_t": 43.445205479450706,
+          "demand_t": 250.0,
+          "critical_demand_t": 170.0,
+          "delivered_t": 263.0816371804112,
+          "losses_t": 3.156979646164958,
+          "served_t": 250.00000000000117,
+          "served_critical_t": 169.999999999999,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 25.28970988928384,
+          "max_inventory_t": 54.054794520545606,
+          "reserve_required_t": 30.82191780821918,
+          "closing_inventory_t": 53.36986301369629,
+          "total_service_level": 1.0000000000000047,
+          "critical_service_level": 0.9999999999999941
+        },
+        {
+          "year": 2039,
+          "opening_inventory_t": 53.36986301369629,
+          "demand_t": 320.0,
+          "critical_demand_t": 210.0,
+          "delivered_t": 333.9318396095633,
+          "losses_t": 4.007182075314705,
+          "served_t": 319.99999999999903,
+          "served_critical_t": 210.0000000000014,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 53.36986301369629,
+          "max_inventory_t": 64.17123287670896,
+          "reserve_required_t": 39.45205479452055,
+          "closing_inventory_t": 63.29452054794183,
+          "total_service_level": 0.999999999999997,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2040,
+          "opening_inventory_t": 63.29452054794183,
+          "demand_t": 390.0,
+          "critical_demand_t": 250.0,
+          "delivered_t": 394.7368421052648,
+          "losses_t": 4.736842105263168,
+          "served_t": 390.00000000000296,
+          "served_critical_t": 250.00000000000117,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 63.29452054794183,
+          "max_inventory_t": 64.36301369862676,
+          "reserve_required_t": 48.082191780821915,
+          "closing_inventory_t": 63.29452054794183,
+          "total_service_level": 1.0000000000000075,
+          "critical_service_level": 1.0000000000000047
+        }
+      ],
+      "yearly_stress": [
+        {
+          "year": 2035,
+          "opening_inventory_t": 20.0,
+          "demand_t": 100.0,
+          "critical_demand_t": 80.0,
+          "delivered_t": 110.220182170264,
+          "losses_t": 4.9599081976618775,
+          "served_t": 100.00000000000071,
+          "served_critical_t": 79.99999999999976,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 25.534246575343385,
+          "reserve_required_t": 12.32876712328767,
+          "closing_inventory_t": 25.26027397260366,
+          "total_service_level": 1.000000000000007,
+          "critical_service_level": 0.999999999999997
+        },
+        {
+          "year": 2036,
+          "opening_inventory_t": 25.26027397260366,
+          "demand_t": 140.0,
+          "critical_demand_t": 105.0,
+          "delivered_t": 147.93965947534733,
+          "losses_t": 1.7752759137041665,
+          "served_t": 140.00000000000045,
+          "served_critical_t": 105.0000000000007,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 25.26027397260366,
+          "max_inventory_t": 31.80821917808267,
+          "reserve_required_t": 17.26027397260274,
+          "closing_inventory_t": 31.424657534247054,
+          "total_service_level": 1.0000000000000033,
+          "critical_service_level": 1.0000000000000067
+        },
+        {
+          "year": 2037,
+          "opening_inventory_t": 31.424657534247054,
+          "demand_t": 190.0,
+          "critical_demand_t": 135.0,
+          "delivered_t": 204.47423881093763,
+          "losses_t": 2.4536908657312493,
+          "served_t": 190.0000000000015,
+          "served_critical_t": 135.00000000000017,
+          "shortage_t": 0.0,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 31.424657534247054,
+          "max_inventory_t": 43.965753424656185,
+          "reserve_required_t": 23.424657534246574,
+          "closing_inventory_t": 43.445205479450706,
+          "total_service_level": 1.000000000000008,
+          "critical_service_level": 1.0000000000000013
+        },
+        {
+          "year": 2038,
+          "opening_inventory_t": 43.445205479450706,
+          "demand_t": 287.5,
+          "critical_demand_t": 195.49999999999997,
+          "delivered_t": 209.08163718041078,
+          "losses_t": 2.508979646164923,
+          "served_t": 250.01786301369876,
+          "served_critical_t": 195.4999999999984,
+          "shortage_t": 37.48213698630242,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 0,
+          "max_inventory_t": 43.832505911051385,
+          "reserve_required_t": 35.445205479452056,
+          "closing_inventory_t": 0,
+          "total_service_level": 0.8696273496128653,
+          "critical_service_level": 0.999999999999992
+        },
+        {
+          "year": 2039,
+          "opening_inventory_t": 0,
+          "demand_t": 368.0,
+          "critical_demand_t": 241.49999999999997,
+          "delivered_t": 303.93183960956367,
+          "losses_t": 3.6471820753147117,
+          "served_t": 300.28465753424615,
+          "served_critical_t": 241.5000000000018,
+          "shortage_t": 67.71534246575325,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 0,
+          "max_inventory_t": 0.822697691874648,
+          "reserve_required_t": 45.36986301369863,
+          "closing_inventory_t": 0,
+          "total_service_level": 0.8159909172126254,
+          "critical_service_level": 1.0000000000000075
+        },
+        {
+          "year": 2040,
+          "opening_inventory_t": 0,
+          "demand_t": 448.49999999999994,
+          "critical_demand_t": 287.5,
+          "delivered_t": 394.7368421052648,
+          "losses_t": 4.736842105263168,
+          "served_t": 390.00000000000296,
+          "served_critical_t": 287.4999999999999,
+          "shortage_t": 58.49999999999955,
+          "rejected_delivery_t": 0.0,
+          "min_inventory_t": 0,
+          "max_inventory_t": 1.0684931506849316,
+          "reserve_required_t": 55.2945205479452,
+          "closing_inventory_t": 0,
+          "total_service_level": 0.8695652173913111,
+          "critical_service_level": 0.9999999999999996
+        }
+      ],
+      "costs_base": [
+        {
+          "year": 2035,
+          "procurement_mln": 683.3651294556408,
+          "reservation_mln": 49.5990819766191,
+          "holding_mln": 16.397516982548648,
+          "fixed_opex_mln": 0.0,
+          "capex_mln": 360.0,
+          "total_mln": 1109.3617284148086
+        },
+        {
+          "year": 2036,
+          "procurement_mln": 917.2258887471577,
+          "reservation_mln": 66.57284676390661,
+          "holding_mln": 20.550737474198282,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 180.0,
+          "total_mln": 1196.3494729852625
+        },
+        {
+          "year": 2037,
+          "procurement_mln": 1280.7670955576507,
+          "reservation_mln": 89.84227164328102,
+          "holding_mln": 27.15240382811002,
+          "fixed_opex_mln": 11.999999999999961,
+          "capex_mln": 1250.0,
+          "total_mln": 2659.7617710290415
+        },
+        {
+          "year": 2038,
+          "procurement_mln": 1247.1061505185514,
+          "reservation_mln": 64.38673673118518,
+          "holding_mln": 27.976699388251852,
+          "fixed_opex_mln": 81.99999999999979,
+          "capex_mln": 0,
+          "total_mln": 1421.4695866379882
+        },
+        {
+          "year": 2039,
+          "procurement_mln": 1707.9160612278852,
+          "reservation_mln": 92.67955188286838,
+          "holding_mln": 42.32458322386733,
+          "fixed_opex_mln": 81.99999999999979,
+          "capex_mln": 0,
+          "total_mln": 1924.9201963346206
+        },
+        {
+          "year": 2040,
+          "procurement_mln": 2139.6315789473683,
+          "reservation_mln": 110.92105263157896,
+          "holding_mln": 45.95671232876443,
+          "fixed_opex_mln": 81.99999999999979,
+          "capex_mln": 0,
+          "total_mln": 2378.509343907712
+        }
+      ],
+      "risks": [
+        {
+          "risk_id": "LUNAR_OUTAGE",
+          "event": "Plant unavailable for one year",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "actual_delivery_share.Lunar-ISRU",
+          "period": 2038,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 0.0,
+          "scenario": {
+            "scenario_id": "TEAM_LUNAR_OUTAGE",
+            "status": "TEAM_ASSUMPTION",
+            "actual_delivery_share": {
+              "Lunar-ISRU": {
+                "2038": 0.0
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 65.19013698630229,
+          "financial_consequence_mln": -98.4714027866521,
+          "service_consequence": -0.2607605479452134,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "ISRU operator",
+          "mitigation": "Earth diversification",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 10920.809156158075,
+            "shortage_t": 45.19013698630487,
+            "min_total_service": 0.8192394520547726,
+            "min_critical_service": 0.9301466559226188,
+            "violations": 4
+          },
+          "mitigation_incremental_cost_mln": 189.6019918736929,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 10731.207164284382,
+            "shortage_t": 65.19013698630229,
+            "min_total_service": 0.7392394520547836,
+            "min_critical_service": 0.8989340854149868,
+            "violations": 4
+          }
+        },
+        {
+          "risk_id": "GEO",
+          "event": "Illustrative trade restriction cost shock, not a forecast",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "variable_price_multiplier.Earth-Core",
+          "period": 2039,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 1.5,
+          "scenario": {
+            "scenario_id": "TEAM_GEO",
+            "status": "TEAM_ASSUMPTION",
+            "variable_price_multiplier": {
+              "Earth-Core": {
+                "2039": 1.5
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 0.0,
+          "financial_consequence_mln": 589.0,
+          "service_consequence": 0.0,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "Procurement lead",
+          "mitigation": "Switch contracts subject to lead time",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 11644.385034832629,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          },
+          "mitigation_incremental_cost_mln": 225.70646776159447,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 11418.678567071034,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          }
+        },
+        {
+          "risk_id": "EARTH_DISRUPTION",
+          "event": "One-year partial delivery interruption",
+          "cause": "TEAM_ASSUMPTION research event",
+          "affected_parameter": "actual_delivery_share.Earth-Core",
+          "period": 2039,
+          "probability_basis_or_range": "No probability claim; deterministic endpoint",
+          "baseline_value": 1.0,
+          "changed_value": 0.5,
+          "scenario": {
+            "scenario_id": "TEAM_EARTH_DISRUPTION",
+            "status": "TEAM_ASSUMPTION",
+            "actual_delivery_share": {
+              "Earth-Core": {
+                "2039": 0.5
+              }
+            },
+            "notes": [
+              "Hypothetical range/event; no calibrated probability; applied separately to BASE"
+            ]
+          },
+          "physical_consequence_t": 30.56547945205693,
+          "financial_consequence_mln": -75.4694489747435,
+          "service_consequence": -0.09551712328767104,
+          "dependencies": "No automatic combination with mandatory stress or other events",
+          "owner": "Logistics lead",
+          "mitigation": "Physical stock and alternate sources",
+          "tested_mitigation": "Explicit alternate plan: +20 t initial physical stock; may not address price shock",
+          "residual_consequence": {
+            "total_cost_mln": 10962.001907156568,
+            "shortage_t": 10.565479452058522,
+            "min_total_service": 0.9669828767123183,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 2
+          },
+          "mitigation_incremental_cost_mln": 207.79278906027685,
+          "mitigation_decision": {
+            "opening_stock_t": 40.0,
+            "opening_source_id": "A",
+            "allocation": "critical_first"
+          },
+          "result_summary": {
+            "total_cost_mln": 10754.20911809629,
+            "shortage_t": 30.56547945205693,
+            "min_total_service": 0.904482876712326,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 2
+          }
+        }
+      ],
+      "sensitivity": {
+        "status": "TEAM_ASSUMPTION",
+        "parameter": "uniform demand multiplier all years",
+        "range_basis": "illustrative 0.8..1.25; low/high organizer vectors reported separately",
+        "points": [
+          {
+            "factor": 0.8,
+            "total_cost_mln": 11050.09759106006,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999921,
+            "min_critical_service": 0.9999999999999966,
+            "violations": 4
+          },
+          {
+            "factor": 0.9,
+            "total_cost_mln": 10993.460839280964,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999902,
+            "min_critical_service": 0.9999999999999948,
+            "violations": 3
+          },
+          {
+            "factor": 1.0,
+            "total_cost_mln": 10829.678567071034,
+            "shortage_t": 0.0,
+            "min_total_service": 0.999999999999997,
+            "min_critical_service": 0.9999999999999941,
+            "violations": 0
+          },
+          {
+            "factor": 1.05,
+            "total_cost_mln": 10717.163661047807,
+            "shortage_t": 6.205479452054824,
+            "min_total_service": 0.98484620402429,
+            "min_critical_service": 0.9999999999999937,
+            "violations": 4
+          },
+          {
+            "factor": 1.1,
+            "total_cost_mln": 10677.403204641038,
+            "shortage_t": 75.70547945205396,
+            "min_total_service": 0.9090909090909158,
+            "min_critical_service": 0.9603068509206556,
+            "violations": 9
+          },
+          {
+            "factor": 1.15,
+            "total_cost_mln": 10664.063955773476,
+            "shortage_t": 145.20547945205413,
+            "min_total_service": 0.8695652173913111,
+            "min_critical_service": 0.9537223712936761,
+            "violations": 10
+          },
+          {
+            "factor": 1.2,
+            "total_cost_mln": 10660.111640494764,
+            "shortage_t": 214.70547945205573,
+            "min_total_service": 0.8333333333333397,
+            "min_critical_service": 0.9486871355034744,
+            "violations": 11
+          },
+          {
+            "factor": 1.25,
+            "total_cost_mln": 10657.806658750513,
+            "shortage_t": 284.2054794520549,
+            "min_total_service": 0.800000000000006,
+            "min_critical_service": 0.9440547185764874,
+            "violations": 11
+          }
+        ],
+        "service_failure_bracket": [
+          1.0548303127288818,
+          1.054830551147461
+        ],
+        "threshold_status": "bracketed",
+        "threshold_search_bounds": [
+          1,
+          2
+        ],
+        "low_high": {
+          "low": {
+            "total_cost_mln": 11050.09759106006,
+            "shortage_t": 0.0,
+            "min_total_service": 0.9999999999999921,
+            "min_critical_service": 0.9999999999999966,
+            "violations": 4
+          },
+          "high": {
+            "total_cost_mln": 10674.259456890879,
+            "shortage_t": 219.70547945205385,
+            "min_total_service": 0.800000000000006,
+            "min_critical_service": 0.9449718543375284,
+            "violations": 9
+          }
+        }
+      },
+      "monte_carlo": {
+        "status": "TEAM_ASSUMPTION",
+        "distribution": "Independent source-year Bernoulli full-year availability; reliability interpreted as success probability",
+        "limitation": "Illustrative interpretation, not calibrated outages; no real-world probability claim. Correlations and partial outages excluded.",
+        "seed": 2035,
+        "count": 100,
+        "service_failure_fraction": 0.52,
+        "wilson_95_conditional_interval": [
+          0.4231640509017654,
+          0.6153561567991945
+        ],
+        "mean_shortage_t": 58.418283160068235,
+        "p95_shortage_t": 173.8254794520582
+      }
+    }
+  },
+  "mcda": {
+    "status": "TEAM_ASSUMPTION",
+    "weight_basis": "Illustrative stakeholder preferences, not elicited from real stakeholders",
+    "criteria_order": [
+      "cost",
+      "stress_service",
+      "stress_shortage"
+    ],
+    "normalization": "Alternative-set min/max benefit; equal values map to 1",
+    "weights": {
+      "operator": [
+        0.3,
+        0.4,
+        0.3
+      ],
+      "critical_consumers": [
+        0.1,
+        0.8,
+        0.1
+      ],
+      "commercial_consumers": [
+        0.2,
+        0.2,
+        0.6
+      ],
+      "suppliers": [
+        0.5,
+        0.2,
+        0.3
+      ],
+      "investor": [
+        0.7,
+        0.2,
+        0.1
+      ]
+    },
+    "scores": [
+      {
+        "plan_id": "TEAM_EARTH",
+        "base_violations": 0,
+        "scores": {
+          "operator": 0.7,
+          "critical_consumers": 0.9,
+          "commercial_consumers": 0.8,
+          "suppliers": 0.5,
+          "investor": 0.30000000000000004
+        }
+      },
+      {
+        "plan_id": "TEAM_LUNAR",
+        "base_violations": 0,
+        "scores": {
+          "operator": 0.7,
+          "critical_consumers": 0.9,
+          "commercial_consumers": 0.4,
+          "suppliers": 0.7,
+          "investor": 0.8999999999999999
+        }
+      }
+    ],
+    "weight_sensitivity": [
+      {
+        "cost_weight": 0.0,
+        "scores": {
+          "TEAM_EARTH": 1.0,
+          "TEAM_LUNAR": 0.5
+        }
+      },
+      {
+        "cost_weight": 0.25,
+        "scores": {
+          "TEAM_EARTH": 0.75,
+          "TEAM_LUNAR": 0.625
+        }
+      },
+      {
+        "cost_weight": 0.5,
+        "scores": {
+          "TEAM_EARTH": 0.5,
+          "TEAM_LUNAR": 0.75
+        }
+      },
+      {
+        "cost_weight": 0.75,
+        "scores": {
+          "TEAM_EARTH": 0.25,
+          "TEAM_LUNAR": 0.875
+        }
+      },
+      {
+        "cost_weight": 1.0,
+        "scores": {
+          "TEAM_EARTH": 0.0,
+          "TEAM_LUNAR": 1.0
+        }
+      }
+    ],
+    "warning": "Scores cannot override feasibility; supplier utility is only a proxy and requires elicitation"
+  }
+}

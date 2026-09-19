@@ -1,0 +1,51 @@
+// Optional real Chromium E2E + printing. See RUNBOOK for isolated npm installation.
+const {chromium: playwright} = require('playwright-core');
+const chromium = require('@sparticuz/chromium');
+const path = require('path');
+const fs = require('fs');
+(async()=>{
+ const root=path.resolve(__dirname,'..');
+ const browser=await playwright.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
+ const page=await browser.newPage({viewport:{width:1440,height:1100},acceptDownloads:true});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(process.env.APP_URL||'http://127.0.0.1:8000');
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
+ if(!(await page.locator('#violations').textContent()).includes('Все проверки'))throw Error('Initial BASE not feasible');
+ await page.locator('#stress').click();
+ await page.waitForFunction(()=>document.querySelector('#scenarioBadge').textContent.startsWith('MANDATORY_STRESS'));
+ if(!(await page.locator('#violations').textContent()).includes('RESERVE_45D'))throw Error('Stress violations absent');
+ await page.locator('#base').click();
+ await page.waitForFunction(()=>document.querySelector('#scenarioBadge').textContent.startsWith('BASE'));
+ await page.locator('#ordered').fill('0');await page.locator('#apply').click();await page.locator('#base').click();
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
+ if((await page.locator('#violations').textContent()).includes('Все проверки'))throw Error('Changed plan did not recalculate');
+ await page.locator('#loadDefault').click();
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
+ const save=page.waitForEvent('download');await page.locator('#save').click();
+ const download=await save;await download.saveAs(path.join(root,'results/browser-plan.json'));
+ await page.locator('#file').setInputFiles(path.join(root,'results/browser-plan.json'));
+ await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
+ await page.locator('[data-analysis="sensitivity"]').click();
+ await page.waitForFunction(()=>document.querySelector('#analysisResult').textContent.includes('service_failure_bracket'));
+ await page.locator('#compare').click();
+ await page.waitForFunction(()=>document.querySelector('#analysisTitle').textContent==='Один план. Два сценария.');
+ await page.locator('#researchEditor').evaluate(el=>el.closest('details').open=true);
+ await page.locator('#researchRun').click();
+ await page.waitForFunction(()=>document.querySelector('#scenarioBadge').textContent.startsWith('TEAM_GEO_CUSTOM'));
+ await page.locator('#base').click();
+ await page.waitForFunction(()=>document.querySelector('#scenarioBadge').textContent.startsWith('BASE'));
+ const exp=page.waitForEvent('download');await page.locator('#export').click();
+ await (await exp).saveAs(path.join(root,'results/browser-export.zip'));
+ await page.evaluate(()=>window.scrollTo(0,0));
+ await page.screenshot({path:path.join(root,'results/ui-desktop.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await page.screenshot({path:path.join(root,'results/ui-mobile.png'),fullPage:true});
+ const overflowing=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
+ if(overflowing)throw Error('Mobile horizontal page overflow');
+ for(const name of ['REPORT','COMPARISON','PRESENTATION']){
+   await page.goto('file://'+path.join(root,'docs',name+'.html'));
+   await page.pdf({path:path.join(root,'results',name+'.pdf'),preferCSSPageSize:true,printBackground:true});
+ }
+ await browser.close();if(errors.length)throw Error(errors.join('\n'));
+ console.log('PASS Chromium: BASE, stress, editing, save/open, sensitivity, comparison, ZIP, mobile and printable documents');
+})().catch(e=>{console.error(e);process.exit(1)});
