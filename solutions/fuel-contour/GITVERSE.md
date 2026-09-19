@@ -1,7 +1,9 @@
 # GitVerse — чистая передача Космоконтура
 
-**Команда #🦥🛰ЛЕНИВЫЕ В ОРБИТЕ**  
-Репозиторий: <https://gitverse.ru/hackrus.experts/kosmo-piter_lenivye_v_orbite_197>  
+**Команда #🦥🛰ЛЕНИВЫЕ В ОРБИТЕ**
+
+Репозиторий: <https://gitverse.ru/hackrus.experts/kosmo-piter_lenivye_v_orbite_197>
+
 Логин владельца: `DPAKYJIA`.
 
 ## 0. Сначала безопасность
