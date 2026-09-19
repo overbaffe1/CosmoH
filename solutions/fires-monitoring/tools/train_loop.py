@@ -78,7 +78,8 @@ CYCLE_SCHEDULE: list[dict] = [
      "params": {"iterations": 300, "learning_rate": 0.08, "leaves": 24, "min_samples_leaf": 80,
                 "l2": 1.0}},
     {"name": "ансамбль трёх лучших моделей", "mode": "ensemble", "top": 3, "bias": True},
-    {"name": "регрессия степени вместо классификации", "mode": "regressor", "features": "base",
+    {"name": "ещё больше пикселей на чип (x4)", "mode": "train", "features": "base",
+     "pixels_scale": 4.0, "bias": True,
      "params": {"iterations": 250, "learning_rate": 0.10, "leaves": 48, "min_samples_leaf": 40,
                 "l2": 1.0}},
     {"name": "перепроверка морфологии на лучшей модели", "mode": "postprocess"},
@@ -265,13 +266,16 @@ def train_cycle(dataset: Dataset, train_ids: list[str], config: dict, pixels: in
     backend = config.get("backend", "auto")
     params = dict(config.get("params", {}))
     params.setdefault("kind", "regressor" if config.get("mode") == "regressor" else "classifier")
-    if pixel_cache is not None and features in pixel_cache:
-        X, y = pixel_cache[features]
+    # ключ кэша включает число пикселей и состав чипов: иначе цикл «вдвое больше пикселей»
+    # молча брал подвыборку предыдущего цикла и повторял его метрику до последнего знака
+    key = (features, int(pixels), int(seed), tuple(train_ids))
+    if pixel_cache is not None and key in pixel_cache:
+        X, y = pixel_cache[key]
     else:
         X, y = sev.collect_training_pixels(dataset, train_ids, pixels, features, seed=seed,
                                            verbose=verbose)
         if pixel_cache is not None:
-            pixel_cache[features] = (X, y)
+            pixel_cache[key] = (X, y)
     return sev.train_model(X, y, params=params, backend=backend, device=device,
                            feature_names=features,
                            weight_mode=config.get("weight_mode", "sqrt"), seed=seed,
@@ -364,7 +368,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--f1-af", type=float, default=None, help="зафиксировать F1 активного горения")
     ap.add_argument("--val-chips", type=int, default=0, help="ограничить отложенную часть (отладка)")
     ap.add_argument("--quick", action="store_true",
-                    help="быстрый прогон для проверки работоспособности (мало пикселей и циклов)")
+                    help="быстрый прогон для проверки работоспособности (меньше пикселей и чипов, "
+                         "но все 12 циклов на месте; регрессия степени в расписании не участвует — "
+                         "она проверена и оказалась хуже классификации)")
+    ap.add_argument("--report", default=None,
+                    help="куда записать отчёт о цикле (по умолчанию docs/severity_loop.json)")
     ap.add_argument("--save", action="store_true",
                     help="записать лучшую модель в weights (по умолчанию только отчёт)")
     args = ap.parse_args(argv)
@@ -428,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
     pixel_cache: dict = {}
     results: list[dict] = []
     best: dict | None = None
+    best_train: dict | None = None  # лучшая конфигурация обучения (без ансамблей и морфологии)
+    final: dict | None = None       # переобучение на всех чипах — модель для сабмита
     trained_models: list[tuple[float, sev.SeverityModel, dict]] = []
 
     for index, config in enumerate(CYCLE_SCHEDULE[:args.cycles], start=1):
@@ -454,7 +464,14 @@ def main(argv: list[str] | None = None) -> int:
             if not note or not config.get("bias"):
                 result = val_cache.evaluate(model, params, bias=bias)
         elif mode == "ensemble":
-            top = sorted(trained_models, key=lambda item: item[0], reverse=True)[:int(config.get("top", 3))]
+            # в ансамбль берутся модели с тем же набором признаков, что у лучшей: расширенный
+            # набор столбцов несравним с базовым, а усреднять вероятности разных моделей можно
+            top_k = int(config.get("top", 3))
+            ranked = sorted(trained_models, key=lambda item: item[0], reverse=True)
+            compatible = [item for item in ranked
+                          if tuple(item[1].feature_names) == tuple(ranked[0][1].feature_names)
+                          and item[1].kind == ranked[0][1].kind]
+            top = compatible[:top_k]
             if not top:
                 print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет обученных моделей)")
                 continue
@@ -495,8 +512,9 @@ def main(argv: list[str] | None = None) -> int:
             if best is None:
                 print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет базовой модели)")
                 continue
-            config_best = best["config"]
-            if config_best.get("mode") in ("ensemble", "bias", "all_data"):
+            source = best_train or best
+            config_best = source["config"]
+            if config_best.get("mode") != "train":
                 config_best = next((c for c in CYCLE_SCHEDULE if c.get("mode") == "train"), config_best)
             all_ids = bs_train + bs_val
             model = train_cycle(dataset, all_ids, config_best,
@@ -510,13 +528,19 @@ def main(argv: list[str] | None = None) -> int:
         score = projected_score(f1_af, iou, miou)
         elapsed = time.perf_counter() - t0
 
-        previous = best["objective"] if best else (baseline["objective"] if baseline else None)
-        verdict = "первый замер"
+        optimistic = mode == "all_data"
+        previous = None if optimistic else (best["objective"] if best else
+                                            (baseline["objective"] if baseline else None))
+        verdict = "модель для сабмита (на отложенной части оценка оптимистична)" if optimistic \
+            else "первый замер"
         improved = False
         if previous is not None:
             delta = value - previous
             improved = delta > IMPROVEMENT_EPS
-            verdict = f"{'ЛУЧШЕ' if improved else 'не лучше'} ({delta:+.4f} объектива)"
+            if index == 1 and abs(delta) < IMPROVEMENT_EPS:
+                verdict = "исходная конфигурация — совпадает с точкой отсчёта"
+            else:
+                verdict = f"{'ЛУЧШЕ' if improved else 'не лучше'} ({delta:+.4f} объектива)"
         print(f"\nцикл {index:2d}/{args.cycles}: {name}")
         print(f"    IoU_burn={iou:.4f}  mIoU_sev={miou:.4f}  проекция Score={score:.5f}  "
               f"[{elapsed:.0f} с]  {verdict}")
@@ -530,30 +554,46 @@ def main(argv: list[str] | None = None) -> int:
         if mode in ("train", "regressor") and model is not None:
             trained_models.append((value, model, entry))
 
-        if best is None or improved:
+        record = {"objective": value, "model": model, "iou_burn": iou, "miou_sev": miou,
+                  "score": score, "cycle": index, "name": name, "config": config,
+                  "bias": bias, "params": params, "entry": entry}
+        if optimistic:
+            final = record
+        elif best is None or improved:
             if bias is None and mode == "postprocess":
                 bias = best.get("bias") if best else None
-            best = {"objective": value, "model": model, "iou_burn": iou, "miou_sev": miou,
-                    "score": score, "cycle": index, "name": name, "config": config,
-                    "bias": bias, "params": params, "entry": entry}
+            best = record
+            if mode == "train":
+                best_train = record
 
     # --- итог: сравнение «до и после» на отложенной части и на всём обучающем наборе
     print("\n=== Итог цикла ===")
     if best is None:
         print("ни один цикл не отработал")
         return 1
+    submit = final or best          # на сабмит идёт модель, обученная на всех чипах, если она есть
     best_model: sev.SeverityModel = best["model"]
     report = {"device": device, "f1_af": f1_af, "f1_source": f1_source,
               "baseline": baseline, "best": {"cycle": best["cycle"], "name": best["name"],
                                              "iou_burn": best["iou_burn"], "miou_sev": best["miou_sev"],
                                              "projected_score": best["score"]},
               "cycles": results}
+    if final is not None:
+        report["final"] = {"cycle": final["cycle"], "name": final["name"],
+                           "iou_burn": final["iou_burn"], "miou_sev": final["miou_sev"],
+                           "projected_score": final["score"],
+                           "note": "переобучение на всех чипах: оценка на отложенной части оптимистична"}
     if baseline is not None:
-        print(f"отложенные {len(val_cache)} чипов: было IoU={baseline['iou_burn']:.4f} "
-              f"mIoU={baseline['miou_sev']:.4f} → стало IoU={best['iou_burn']:.4f} "
-              f"mIoU={best['miou_sev']:.4f}")
-        print(f"проекция Score на отложенной части: {projected_score(f1_af, baseline['iou_burn'], baseline['miou_sev']):.5f} "
-              f"→ {best['score']:.5f} ({(best['score'] - projected_score(f1_af, baseline['iou_burn'], baseline['miou_sev'])):+.5f})")
+        base_projection = projected_score(f1_af, baseline["iou_burn"], baseline["miou_sev"])
+        print(f"отложенные {len(val_cache)} чипов (честное сравнение, эти чипы модель не видела): "
+              f"было IoU={baseline['iou_burn']:.4f} mIoU={baseline['miou_sev']:.4f} "
+              f"→ стало IoU={best['iou_burn']:.4f} mIoU={best['miou_sev']:.4f}")
+        print(f"проекция Score на отложенной части: {base_projection:.5f} → {best['score']:.5f} "
+              f"({best['score'] - base_projection:+.5f}) — это ожидаемый прирост на платформе")
+    if final is not None:
+        print(f"модель для сабмита (обучена на всех {len(bs_train) + len(bs_val)} BS-чипах): "
+              f"IoU={final['iou_burn']:.4f} mIoU={final['miou_sev']:.4f} "
+              f"проекция Score={final['score']:.5f} (оценка оптимистична: эти чипы она видела)")
 
     if not args.quick:
         print("\n=== Контроль на всём обучающем наборе (224 BS-чипа) ===")
@@ -564,10 +604,10 @@ def main(argv: list[str] | None = None) -> int:
                   f"mIoU_sev={full_base['miou_sev']:.4f}  Score≈{base_score:.5f}")
             report["full_train_before"] = {"iou_burn": full_base["iou_burn"],
                                            "miou_sev": full_base["miou_sev"], "score": base_score}
-        full_best = evaluate_bs(dataset, dataset.chip_ids("bs"), best.get("params", bs_params),
-                                severity_model=best_model)
+        full_best = evaluate_bs(dataset, dataset.chip_ids("bs"), submit.get("params", bs_params),
+                                severity_model=submit["model"])
         best_score = projected_score(f1_af, full_best["iou_burn"], full_best["miou_sev"])
-        print(f"    стало (лучшая модель):  IoU_burn={full_best['iou_burn']:.4f} "
+        print(f"    стало (модель для сабмита): IoU_burn={full_best['iou_burn']:.4f} "
               f"mIoU_sev={full_best['miou_sev']:.4f}  Score≈{best_score:.5f}")
         report["full_train_after"] = {"iou_burn": full_best["iou_burn"],
                                       "miou_sev": full_best["miou_sev"], "score": best_score}
@@ -587,24 +627,26 @@ def main(argv: list[str] | None = None) -> int:
         if current.exists():
             current.replace(prev)
             print(f"\nпрежняя модель сохранена: {prev}")
-        saved = best_model.save(current)
+        submit_model: sev.SeverityModel = submit["model"]
+        submit_model.class_bias = None if submit.get("bias") is None else tuple(submit["bias"])
+        saved = submit_model.save(current)
         weights["bs_mode"] = "model"
         weights["severity_model"] = saved.name
-        chosen_params = best.get("params", bs_params)
+        chosen_params = submit.get("params", bs_params)
         weights.setdefault("bs", {})["min_patch_px"] = chosen_params.min_patch_px
         weights.setdefault("bs", {})["fill_holes_mask"] = chosen_params.fill_holes_mask
-        weights.setdefault("train_metrics", {})["bs_severity_model"] = best_model.metrics
+        weights.setdefault("train_metrics", {})["bs_severity_model"] = submit_model.metrics
         weights["train_metrics"]["severity_loop"] = {
-            "cycle": best["cycle"], "name": best["name"], "device": device,
-            "iou_burn": best["iou_burn"], "miou_sev": best["miou_sev"],
-            "projected_score": best["score"],
+            "cycle": submit["cycle"], "name": submit["name"], "device": device,
+            "iou_burn": submit["iou_burn"], "miou_sev": submit["miou_sev"],
+            "projected_score": submit["score"],
         }
         save_weights(weights, out_path)
         print(f"модель записана: {saved}")
         print(f"веса обновлены: {out_path}")
         report["saved"] = str(saved)
 
-    report_path = ROOT / "docs" / "severity_loop.json"
+    report_path = Path(args.report) if args.report else ROOT / "docs" / "severity_loop.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"отчёт о цикле: {report_path}")
     print(f"всего времени: {time.perf_counter() - t_start:.0f} с")

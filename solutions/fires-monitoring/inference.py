@@ -72,8 +72,19 @@ def _load_solution(weights_path: Path | None, device: str | None = None):
     return af_params, bs_params, blob_filter, severity_model
 
 
-def _init_worker(data_dir: str, weights_path: str | None, device: str | None = None) -> None:
-    """Инициализация воркера: датасет и пороги читаются один раз на процесс."""
+def _init_worker(data_dir: str, weights_path: str | None, device: str | None = None,
+                 threads: int = 1) -> None:
+    """Инициализация воркера: датасет и пороги читаются один раз на процесс.
+
+    Параллелизм внутри воркера ограничивается долей ядер (``threads``): иначе каждый процесс
+    тянет за собой все ядра BLAS/OpenMP, и на 6-ядерной машине двенадцать воркеров дерутся за
+    двенадцать потоков, теряя на переключениях больше, чем выигрывают. Явно заданные переменные
+    окружения не перетираются — их можно выставить снаружи.
+    """
+
+    if threads:
+        for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+            os.environ.setdefault(name, str(threads))
 
     af_params, bs_params, blob_filter, severity_model = _load_solution(
         Path(weights_path) if weights_path else None, device)
@@ -160,7 +171,7 @@ def process(
     if limit:
         template_ids = template_ids[:limit]
 
-    n_jobs = jobs if jobs > 0 else min(8, os.cpu_count() or 1)
+    n_jobs = jobs if jobs > 0 else min(12, os.cpu_count() or 1)
     results: list[dict] = []
     used_jobs = 1
     if n_jobs > 1 and len(template_ids) > 4:
@@ -172,7 +183,8 @@ def process(
                 max_workers=n_jobs,
                 mp_context=ctx,
                 initializer=_init_worker,
-                initargs=(str(data_dir), str(weights_path) if weights_path else None, device),
+                initargs=(str(data_dir), str(weights_path) if weights_path else None, device,
+                          max(1, (os.cpu_count() or 1) // n_jobs)),
             ) as pool:
                 results = list(pool.map(_process_chip, template_ids, chunksize=1))
             used_jobs = n_jobs
@@ -224,7 +236,9 @@ def process(
         "af_fire_px": af_px_total,
         "bs_burned_px": bs_px_total,
         "seconds": round(elapsed, 2),
+        "seconds_per_chip": round(elapsed / processed, 3) if processed else None,
         "jobs": used_jobs,
+        "threads_per_job": max(1, (os.cpu_count() or 1) // used_jobs),
         "output": str(output),
         "details": stats,
     }
