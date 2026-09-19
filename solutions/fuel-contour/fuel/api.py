@@ -1,4 +1,5 @@
 import io
+from functools import lru_cache
 import tempfile
 import zipfile
 from pathlib import Path
@@ -59,7 +60,7 @@ def guarded(fn):
 
 @app.get('/')
 def index():
-    return FileResponse(ROOT/'web/index.html')
+    return FileResponse(ROOT/'web/showcase.html')
 
 @app.get('/api/case')
 def case_data():
@@ -125,3 +126,44 @@ class RecourseRequest(BaseModel):
 @app.post('/api/recourse')
 def recourse(req: RecourseRequest):
     return guarded(lambda: emergency_response(load_case(), **req.model_dump()))
+
+
+@app.get('/planner')
+def planner():
+    return FileResponse(ROOT/'web/index.html')
+
+
+@app.get('/presentation')
+def presentation():
+    return FileResponse(ROOT/'docs/PRESENTATION.html')
+
+
+@app.get('/materials/{name}')
+def material(name: str):
+    allowed = {'REPORT.pdf','COMPARISON.pdf','PRESENTATION.pdf','PRESENTATION.pptx',
+               'DEFENSE_GUIDE.md','SPEAKER_NOTES.md','RECOURSE.md'}
+    if name not in allowed or not (ROOT/'docs'/name).is_file():
+        raise HTTPException(404, 'Unknown material')
+    return FileResponse(ROOT/'docs'/name, filename=name)
+
+
+@app.get('/api/showcase')
+@lru_cache(maxsize=1)
+def showcase():
+    case = load_case()
+    data = {'case_version':case['version'], 'years':[r['year'] for r in case['demand']],
+            'sources':case['supply_sources'], 'architectures':{},
+            'basis':'CASE_INPUT; real rate 0 for this fixed demonstration; edit rate and contracts in /planner',
+            'reference_status':'BLOCKED: upstream missing docs/ERRATA_AND_PROVENANCE.md'}
+    for architecture in ('earth','lunar'):
+        plan = make_plan(case, architecture)
+        prepared = make_plan(case, architecture, load_scenario('MANDATORY_STRESS'))
+        runs = {}
+        for mode, p, scenario_id in [('base',plan,'BASE'),('stress',plan,'MANDATORY_STRESS'),
+                                     ('prepared',prepared,'MANDATORY_STRESS'),('prepared_base',prepared,'BASE')]:
+            result = evaluate(case, p, load_scenario(scenario_id))
+            runs[mode] = {k:result[k] for k in ('plan_id','scenario_id','summary','yearly_balance',
+                            'source_schedule','constraint_checks','financial_breakdown')}
+            runs[mode]['inventory_trace'] = [r for i,r in enumerate(result['inventory_trace']) if i%7==0 or r['day'] in (1,365)]
+        data['architectures'][architecture] = {'plan':plan,'prepared_plan':prepared,'runs':runs}
+    return data

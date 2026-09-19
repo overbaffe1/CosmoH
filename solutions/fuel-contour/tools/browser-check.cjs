@@ -9,7 +9,7 @@ const fs = require('fs');
  const browser=await playwright.launch({executablePath:await chromium.executablePath(),args:chromium.args,headless:true});
  const page=await browser.newPage({viewport:{width:1440,height:1100},acceptDownloads:true});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(process.env.APP_URL||'http://127.0.0.1:8000');
+ await page.goto(process.env.APP_URL||'http://127.0.0.1:8000/planner');
  await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
  if(!(await page.locator('#violations').textContent()).includes('Все проверки'))throw Error('Initial BASE not feasible');
  await page.locator('#plainHelp summary').click();
