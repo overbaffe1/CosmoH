@@ -34,7 +34,7 @@ import argparse
 import json
 import sys
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import numpy as np
@@ -96,14 +96,36 @@ CYCLE_SCHEDULE: list[dict] = [
      "bias": True},
     {"name": "постобработка вероятностей: сглаживание и фильтр большинства", "mode": "spatial"},
     {"name": "перепроверка морфологии на лучшей модели", "mode": "postprocess"},
+    {"name": "тюнинг правил активного горения (F1_af — 35 % Score)", "mode": "af"},
     {"name": "переобучение лучшей конфигурации на всех чипах", "mode": "all_data"},
 ]
 
 #: Сдвиги, которые перебираются при подборе смещений классов.
 BIAS_GRID = (-0.08, -0.05, -0.03, -0.015, 0.0, 0.015, 0.03, 0.05, 0.08)
 
+#: Порог «улучшения» F1 активного горения: меньше этой разницы считаем шумом.
+AF_EPS = 3e-4
+
 #: Порог «улучшения»: меньше этой разницы объектива считаем шумом.
 IMPROVEMENT_EPS = 2e-4
+
+#: Допуск при проверке выигрыша по половинам отложенной части: на каждой половине улучшение
+#: должно быть не хуже, чем на эту величину (иначе выигрыш собран из случайных чипов).
+HALF_TOLERANCE = 1.5e-3
+
+#: Что перебираем в шаге «тюнинг правил активного горения». Это операционные пороги
+#: детектора (правила, не модель): каждый вариант считается только по уже прочитанным чипам.
+AF_TUNE_GRID = {
+    "k_sigma": (2.0, 3.0, 4.0),
+    "delta_day": (20.0, 25.0, 30.0),
+    "candidate_t4": (325.0, 330.0, 335.0),
+    "delta_night": (8.0, 10.0, 14.0),
+    "min_cluster_px": (1, 2, 3),
+}
+
+#: Допуск при котором выигрыш считается «подтверждённым частично»: просадка на одной половине
+#: заметна, но невелика. Такие варианты не хуже исходного, однако и не надёжнее его.
+PARTIAL_TOLERANCE = 5e-3
 
 
 class ValCache:
@@ -214,12 +236,21 @@ class ValCache:
             if chiplimit:
                 self.chips = saved
         cuts = getattr(model, "cuts", (0.5, 1.5, 2.5))
-        return self.score_from_probabilities(
-            values, params, bias=bias, cuts=cuts,
+        extra = dict(
             smooth=int(getattr(model, "proba_smooth", 0) or 0),
             majority=int(getattr(model, "majority_filter", 0) or 0),
             majority_iters=int(getattr(model, "majority_iters", 1) or 1),
             demote=int(getattr(model, "demote_min_px", 0) or 0))
+        result = self.score_from_probabilities(values, params, bias=bias, cuts=cuts, **extra)
+        # половины отложенной части: проверка, что выигрыш не собран из случайных чипов
+        fit, check = verification_split(self)
+        halves = []
+        for subset in (set(fit), set(check)):
+            part = self.score_from_probabilities(values, params, bias=bias, cuts=cuts,
+                                                 subset=subset, **extra)
+            halves.append(objective(part["iou_burn"], part["miou_sev"]))
+        result["half_objectives"] = halves
+        return result
 
 
 def estimator_predict(model: sev.SeverityModel, matrix: np.ndarray) -> np.ndarray:
@@ -278,6 +309,84 @@ def measure_f1_af(dataset: Dataset, weights: dict, numbers_path: Path,
         ids = ids[:40]
     result = evaluate_af(dataset, ids, af_params, blob_filter=blob_filter)
     return (None if result["f1_af"] is None else float(result["f1_af"])), f"замер на {len(ids)} AF-чипах"
+
+
+def _fmt(value) -> str:
+    """Число для печати: None — как «н/д», иначе с четырьмя знаками."""
+
+    return "н/д" if value is None else f"{float(value):.4f}"
+
+
+def load_blob_filter(weights: dict, numbers_path: Path):
+    """Классификатор ложных очагов, если решение работает в режиме ``blobs``."""
+
+    if weights.get("af_mode") != "blobs" or not weights.get("blob_filter"):
+        return None
+    path = numbers_path.parent.parent / "weights" / weights["blob_filter"]
+    if not path.exists():
+        return None
+    from fires.blobfilter import BlobFilter
+
+    return BlobFilter.load(path)
+
+
+def af_f1(dataset: Dataset, ids: list[str], params, blob_filter=None,
+          verbose: bool = False) -> float | None:
+    """F1 активного горения по правилам детектора на перечисленных чипах."""
+
+    result = evaluate_af(dataset, ids, params, blob_filter=blob_filter)
+    if verbose and result.get("f1_af") is not None:
+        print(f"    AF на {len(ids)} чипах: F1={result['f1_af']:.4f}")
+    return None if result.get("f1_af") is None else float(result["f1_af"])
+
+
+def tune_af(dataset: Dataset, ids: list[str], weights: dict, numbers_path: Path,
+            verbose: bool = True) -> tuple[object, dict]:
+    """Координатный подъём по порогам детектора активного горения.
+
+    Поиск идёт на одной половине отложенных AF-чипов, приём — только если улучшение видно и
+    на второй: правила AF переносятся между наборами хуже, чем кажется по одной выборке.
+    """
+
+    from fires import af as af_module
+
+    blob_filter = load_blob_filter(weights, numbers_path)
+    fit_ids, check_ids = [], []
+    for position, chip_id in enumerate(ids):
+        (fit_ids if position % 2 == 0 else check_ids).append(chip_id)
+    base = af_module.to_params(weights.get("af", {}))
+    if not fit_ids or not check_ids:
+        return base, {"accepted": False, "reason": "мало AF-чипов для проверки"}
+
+    base_fit = af_f1(dataset, fit_ids, base, blob_filter)
+    if base_fit is None:
+        return base, {"accepted": False, "reason": "на отложенных AF-чипах нет эталона"}
+    best_fit, chosen_values = base_fit, {}
+    for field, variants in AF_TUNE_GRID.items():
+        current = getattr(base, field)
+        for value in variants:
+            if value == current:
+                continue
+            candidate = replace(base, **{**chosen_values, field: value})
+            value_fit = af_f1(dataset, fit_ids, candidate, blob_filter)
+            if value_fit is not None and value_fit > best_fit + AF_EPS:
+                best_fit, chosen_values = value_fit, {**chosen_values, field: value}
+    if not chosen_values:
+        return base, {"accepted": False, "reason": "лучше исходных правил ничего не нашлось",
+                      "f1_fit_before": base_fit, "f1_fit_after": base_fit}
+    tuned = replace(base, **chosen_values)
+    check_before = af_f1(dataset, check_ids, base, blob_filter)
+    check_after = af_f1(dataset, check_ids, tuned, blob_filter)
+    accepted = (check_before is not None and check_after is not None
+                and check_after > check_before + AF_EPS)
+    info = {"accepted": accepted, "changed": chosen_values,
+            "f1_fit_before": base_fit, "f1_fit_after": best_fit,
+            "f1_check_before": check_before, "f1_check_after": check_after}
+    if not accepted:
+        info["reason"] = (f"на второй половине AF-чипов выигрыш не подтвердился "
+                          f"({check_before:.4f} → {check_after:.4f})")
+        return base, info
+    return tuned, info
 
 
 def train_cycle(dataset: Dataset, train_ids: list[str], config: dict, pixels: int,
@@ -362,6 +471,13 @@ def tune_bias(cache: ValCache, model: sev.SeverityModel, params: bs_module.BSPar
     result_full = cache.score_from_probabilities(values, params, bias=bias, smooth=smooth,
                                                  majority=majority, majority_iters=majority_iters,
                                                  demote=demote)
+    halves = []
+    for subset in (fit_set, check_set):
+        part = cache.score_from_probabilities(values, params, bias=bias, subset=subset,
+                                              smooth=smooth, majority=majority,
+                                              majority_iters=majority_iters, demote=demote)
+        halves.append(objective(part["iou_burn"], part["miou_sev"]))
+    result_full["half_objectives"] = halves
     result_full["bias_verified"] = bool(any(abs(v) > 1e-9 for v in bias))
     result_full["bias_full_objective"] = objective(full["iou_burn"], full["miou_sev"])
     return tuple(round(v, 4) for v in bias), result_full
@@ -401,10 +517,16 @@ def main(argv: list[str] | None = None) -> int:
                     help="быстрый прогон для проверки работоспособности (меньше пикселей и чипов, "
                          "но все 12 циклов на месте; регрессия степени в расписании не участвует — "
                          "она проверена и оказалась хуже классификации)")
+    ap.add_argument("--strict", action="store_true",
+                    help="принимать только те улучшения, что подтверждаются обеими половинами "
+                         "отложенной части (защита от подгонки под валидацию)")
     ap.add_argument("--gpu-report", action="store_true",
                     help="показать, что известно про GPU, и выйти (диагностика CUDA)")
     ap.add_argument("--report", default=None,
                     help="куда записать отчёт о цикле (по умолчанию docs/severity_loop.json)")
+    ap.add_argument("--af-tune", action=argparse.BooleanOptionalAction, default=True,
+                    help="подбирать пороги детектора активного горения (по умолчанию да; "
+                         "--no-af-tune выключает, тогда F1_af берётся как есть)")
     ap.add_argument("--save", action="store_true",
                     help="записать лучшую модель в weights (по умолчанию только отчёт)")
     args = ap.parse_args(argv)
@@ -447,6 +569,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"    чипов в каталоге: {len(all_ids)} "
           f"(af {len(dataset.chip_ids('af'))}, bs {len(dataset.chip_ids('bs'))})")
     bs_train, bs_val = _split_ids(dataset, "bs", args.val_frac, args.seed)
+    # AF-чипы с эталоном ищем по составу файлов: читать все чипы ради проверки маски дорого
+    af_ids = [chip_id for chip_id in dataset.chip_ids("af")
+              if any("mask" in path.stem.lower() for path in dataset.files.get(chip_id, ()))] \
+        if args.af_tune else []
     if args.val_chips:
         bs_val = bs_val[:args.val_chips]
     if not bs_train:
@@ -463,7 +589,8 @@ def main(argv: list[str] | None = None) -> int:
     f1_af, f1_source = (args.f1_af, "аргумент --f1-af") if args.f1_af is not None else \
         measure_f1_af(dataset, weights, numbers_path, quick=args.quick or bool(args.val_chips))
     print(f"    F1 активного горения: {f1_af if f1_af is None else round(f1_af, 5)} ({f1_source}); "
-          f"этот модуль цикл не меняет")
+          + ("в цикле есть шаг тюнинга правил AF" if af_ids
+             else "тюнинг AF выключен (--no-af-tune)"))
 
     t_start = time.perf_counter()
     print("\n=== Считаю признаки отложенной части (один раз) ===")
@@ -490,7 +617,8 @@ def main(argv: list[str] | None = None) -> int:
     if base_model is not None:
         result = val_cache.evaluate(base_model, bs_params)
         baseline = {"iou_burn": result["iou_burn"], "miou_sev": result["miou_sev"],
-                    "objective": objective(result["iou_burn"], result["miou_sev"])}
+                    "objective": objective(result["iou_burn"], result["miou_sev"]),
+                    "halves": result.get("half_objectives")}
         print(f"    IoU_burn={baseline['iou_burn']:.4f}  mIoU_sev={baseline['miou_sev']:.4f}  "
               f"проекция Score={projected_score(f1_af, baseline['iou_burn'], baseline['miou_sev']):.5f}")
     else:
@@ -498,6 +626,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pixel_cache: dict = {}
     results: list[dict] = []
+    af_history: list[dict] = []
     best: dict | None = None
     best_train: dict | None = None  # лучшая конфигурация обучения (без ансамблей и морфологии)
     final: dict | None = None       # переобучение на всех чипах — модель для сабмита
@@ -516,6 +645,49 @@ def main(argv: list[str] | None = None) -> int:
         spatial = ((int(best.get("smooth", 0) or 0), int(best.get("majority", 0) or 0),
                     int(best.get("majority_iters", 1) or 1), int(best.get("demote", 0) or 0))
                    if best else (0, 0, 1, 0))
+
+        if mode == "af":
+            # Правила активного горения цикл раньше вообще не трогал, а F1_af — это 35 % Score.
+            # Пороги подбираются на одной половине AF-чипов, вторая служит проверкой.
+            if not af_ids:
+                print(f"\nцикл {index:2d}/{args.cycles}: {name} — пропуск (нет AF-чипов с эталоном)")
+                continue
+            from fires import af as af_module
+
+            blob_filter = load_blob_filter(weights, numbers_path)
+            base_params = af_module.to_params(weights.get("af", {}))
+            f1_all_before = af_f1(dataset, af_ids, base_params, blob_filter)
+            tuned, af_info = tune_af(dataset, af_ids, weights, numbers_path,
+                                     verbose=not args.quick)
+            f1_all_after = af_f1(dataset, af_ids, tuned, blob_filter) \
+                if af_info.get("accepted") else f1_all_before
+            iou, miou = best["iou_burn"], best["miou_sev"]
+            value = objective(iou, miou)
+            score_before = projected_score(f1_all_before, iou, miou)
+            improved = (f1_all_after is not None and f1_all_before is not None
+                        and f1_all_after > f1_all_before + AF_EPS)
+            if improved:
+                weights["af"] = asdict(tuned)
+                f1_af = f1_all_after
+            score = projected_score(f1_af, iou, miou)
+            elapsed = time.perf_counter() - t0
+            changed = af_info.get("changed") or {}
+            note = ("; ".join(f"{field} → {value_!r}" for field, value_ in changed.items())
+                    if changed else str(af_info.get("reason", "правила не изменились")))
+            print(f"\nцикл {index:2d}/{args.cycles}: {name}")
+            print(f"    F1 активного горения на всех {len(af_ids)} AF-чипах: "
+                  f"{_fmt(f1_all_before)} → {_fmt(f1_all_after)}; "
+                  f"проекция Score {score_before:.5f} → {score:.5f}  [{elapsed:.0f} с]")
+            print(f"    {'ПРИНЯТО — новые пороги уходят в weights.json' if improved else 'ОТКЛОНЕНО'}"
+                  f"{'; ' + note if note else ''}")
+            entry = {"cycle": index, "name": name, "mode": mode, "iou_burn": iou, "miou_sev": miou,
+                     "objective": value, "projected_score": score, "seconds": round(elapsed, 1),
+                     "improved": improved, "note": note, "device": "правила AF",
+                     "halves": [af_info.get("f1_fit_before"), af_info.get("f1_fit_after")],
+                     "stable": bool(improved)}
+            results.append(entry)
+            af_history.append(entry)
+            continue
 
         if mode in ("train", "regressor"):
             pixels = int(args.pixels * float(config.get("pixels_scale", 1.0)))
@@ -668,22 +840,53 @@ def main(argv: list[str] | None = None) -> int:
         verdict = "модель для сабмита (на отложенной части оценка оптимистична)" if optimistic \
             else "первый замер"
         improved = False
+        halves = result.get("half_objectives")
+        stable = None
+        if halves is not None:
+            # улучшение должно быть видно на обеих половинах отложенных чипов: иначе это
+            # выигрыш на случайных чипах, который на платформе легко превращается в проигрыш
+            base_halves = (best or baseline or {}).get("halves")
+            if base_halves:
+                diffs = [h - b for h, b in zip(halves, base_halves)]
+                if all(d > -HALF_TOLERANCE for d in diffs):
+                    stable = True
+                elif all(d > -PARTIAL_TOLERANCE for d in diffs):
+                    # не хуже исходного варианта, но и не явно лучше: брать такой риск не стоит
+                    stable = "partial"
         if previous is not None:
             delta = value - previous
             improved = delta > IMPROVEMENT_EPS
             if index == 1 and abs(delta) < IMPROVEMENT_EPS:
                 verdict = "исходная конфигурация — совпадает с точкой отсчёта"
             else:
-                verdict = f"{'ЛУЧШЕ' if improved else 'не лучше'} ({delta:+.4f} объектива)"
+                mark = ""
+                if improved and stable is True:
+                    mark = " — выигрыш подтверждён на обеих половинах"
+                elif improved and stable == "partial":
+                    mark = " — подтверждён частично (на одной половине просадка)"
+                elif improved and stable is False:
+                    mark = " — НЕ подтверждён на половинах, к загрузке не рекомендуется"
+                verdict = f"{'ЛУЧШЕ' if improved else 'не лучше'} ({delta:+.4f} объектива){mark}"
+        if args.strict and improved and stable is not True:
+            improved = False
+            verdict += " [--strict: отклонено, выигрыш неустойчив]"
         print(f"\nцикл {index:2d}/{args.cycles}: {name}")
         print(f"    IoU_burn={iou:.4f}  mIoU_sev={miou:.4f}  проекция Score={score:.5f}  "
               f"[{elapsed:.0f} с]  {verdict}")
         if note:
             print(f"    {note}")
+        if halves:
+            base_halves = (best or baseline or {}).get("halves")
+            tail = ""
+            if base_halves:
+                diffs = ", ".join(f"{h - b:+.4f}" for h, b in zip(halves, base_halves))
+                tail = f"  к точке отсчёта: {diffs} (половины отложенных чипов)"
+            print(f"    половины отложенного набора: {halves[0]:.4f} / {halves[1]:.4f}{tail}")
 
         entry = {"cycle": index, "name": name, "mode": mode, "iou_burn": iou, "miou_sev": miou,
                  "objective": value, "projected_score": score, "seconds": round(elapsed, 1),
-                 "improved": improved, "note": note, "device": device}
+                 "improved": improved, "note": note, "device": device,
+                 "halves": halves, "stable": stable}
         results.append(entry)
         if mode in ("train", "regressor") and model is not None:
             trained_models.append((value, model, entry))
@@ -692,7 +895,7 @@ def main(argv: list[str] | None = None) -> int:
                   "score": score, "cycle": index, "name": name, "config": config,
                   "bias": bias, "params": params, "entry": entry,
                   "smooth": spatial[0], "majority": spatial[1], "majority_iters": spatial[2],
-                  "demote": spatial[3]}
+                  "demote": spatial[3], "halves": halves, "stable": stable}
         if optimistic:
             # модель для сабмита: к ней применяется лучшая найденная постобработка вероятностей
             final = record
@@ -720,6 +923,7 @@ def main(argv: list[str] | None = None) -> int:
     submit = final or best          # на сабмит идёт модель, обученная на всех чипах, если она есть
     best_model: sev.SeverityModel = best["model"]
     report = {"device": device, "f1_af": f1_af, "f1_source": f1_source,
+              "af_tune": af_history,
               "baseline": baseline, "best": {"cycle": best["cycle"], "name": best["name"],
                                              "iou_burn": best["iou_burn"], "miou_sev": best["miou_sev"],
                                              "projected_score": best["score"]},
@@ -761,8 +965,19 @@ def main(argv: list[str] | None = None) -> int:
     print("\n=== Циклы построчно ===")
     for entry in results:
         mark = "+" if entry["improved"] else " "
+        tail = ""
+        if entry["improved"] and entry.get("stable") is False:
+            tail = "  ← выигрыш не подтверждён на половинах"
         print(f" {mark} {entry['cycle']:2d}. {entry['name'][:52]:52s} Score≈{entry['projected_score']:.5f} "
-              f"({entry['seconds']:.0f} с)")
+              f"({entry['seconds']:.0f} с){tail}")
+
+    if best is not None and best.get("stable") is False:
+        print("\nВНИМАНИЕ: лучший по отложенной части вариант не подтверждён обеими половинами чипов.\n"
+              "    На 56 чипах разница до ≈0.01 Score — это шум: такой вариант может на платформе\n"
+              "    оказаться хуже. Безопаснее запустить с --strict и взять то, что подтвердится.")
+    elif best is not None and len(val_cache) < 40:
+        print(f"\n    отложенных чипов мало ({len(val_cache)}): разница с точкой отсчёта сравнима\n"
+              f"    с шумом выборки, к выбору лучшего варианта стоит относиться осторожно")
 
     # смещения классов должны попасть в файл модели: иначе инференс их не применит
     best_model.class_bias = None if best.get("bias") is None else tuple(best["bias"])

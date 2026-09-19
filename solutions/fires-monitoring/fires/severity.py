@@ -218,6 +218,104 @@ def classify_from_proba(proba: np.ndarray, indices: np.ndarray, shape: tuple[int
     return classes
 
 
+def _cuda_dll_dirs() -> list[str]:
+    """Каталоги с CUDA-библиотеками внутри Python (пакет ``nvidia-cuda-runtime-cu12``).
+
+    На Windows xgboost не находит ``cudart64_12.dll``, пока её каталог не добавлен в PATH —
+    типичная причина ответа «сборка с CUDA, но устройства нет» при исправном драйвере.
+    """
+
+    import glob
+    import site
+    import sys
+
+    roots: list[str] = []
+    for base in [sys.prefix, getattr(site, "getusersitepackages", lambda: "")()]:
+        if base:
+            roots.append(base)
+    try:
+        roots.extend(site.getsitepackages())
+    except Exception:
+        pass
+    dirs: list[str] = []
+    for base in roots:
+        for pattern in ("nvidia/*/bin", "nvidia/cuda_runtime/bin", "nvidia/*/lib", "nvidia/*/lib/x64"):
+            dirs.extend(glob.glob(os.path.join(base, pattern)))
+    return sorted({d for d in dirs if os.path.isdir(d)})
+
+
+def _add_cuda_dll_dirs() -> list[str]:
+    """Добавляет найденные каталоги CUDA-библиотек к путям поиска DLL. Возвращает список."""
+
+    dirs = _cuda_dll_dirs()
+    for directory in dirs:
+        if hasattr(os, "add_dll_directory"):
+            try:
+                os.add_dll_directory(directory)
+            except Exception:
+                pass
+        os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+    return dirs
+
+
+def _nvidia_smi() -> dict:
+    """Что говорит драйвер: есть ли ``nvidia-smi``, какая карта и версия драйвера.
+
+    Это отдельный от xgboost источник правды: если карта видна здесь, проблема в CUDA-рантайме,
+    а не в драйвере — и наоборот.
+    """
+
+    import shutil
+    import subprocess
+
+    path = shutil.which("nvidia-smi")
+    info: dict = {"nvidia_smi": path, "gpu": None, "driver": None, "error": None}
+    if not path:
+        info["error"] = "nvidia-smi не найден: драйвер NVIDIA не установлен или не в PATH"
+        return info
+    try:
+        out = subprocess.run(
+            [path, "--query-gpu=name,driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=15, check=False)
+    except Exception as exc:
+        info["error"] = f"{type(exc).__name__}: {exc}"
+        return info
+    text = (out.stdout or "").strip()
+    if text:
+        name, _, driver = text.splitlines()[0].partition(",")
+        info["gpu"], info["driver"] = name.strip(), driver.strip()
+    else:
+        info["error"] = (out.stderr or "").strip()[:200] or "nvidia-smi не вернул данные о карте"
+    return info
+
+
+def _probe_cuda(xgb) -> tuple[bool, str]:
+    """Однократная проба: обучение на device="cuda" и чтение устройства из конфига бустера."""
+
+    import contextlib
+    import io
+    import re
+
+    rng = np.random.default_rng(0)
+    x = rng.random((64, 3), dtype=np.float32)
+    y = (x[:, 0] > 0.5).astype(np.int32)
+    stderr = io.StringIO()
+    try:
+        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda", verbosity=0)
+        with contextlib.redirect_stderr(stderr):
+            probe.fit(x, y)
+        used = re.search(r'"device"\s*:\s*"([a-z]+)"', probe.get_booster().save_config())
+        if used and used.group(1) == "cuda":
+            return True, ""
+        return False, "xgboost не включил CUDA-устройство"
+    except Exception as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    finally:
+        text = stderr.getvalue().strip().replace("\n", " ")
+        if text:
+            _DEVICE_CACHE["xgboost_warning"] = text[:300]
+
+
 def gpu_report() -> dict:
     """Что известно про GPU: версия xgboost, собран ли он с CUDA и работает ли она здесь.
 
@@ -226,7 +324,8 @@ def gpu_report() -> dict:
     микрообучение на одну итерацию, результат кэшируется.
     """
 
-    info: dict = {"xgboost": None, "build_use_cuda": False, "runtime_ok": False, "reason": ""}
+    info: dict = {"xgboost": None, "build_use_cuda": False, "runtime_ok": False, "reason": "",
+                  "cuda_dll_dirs": [], "nvidia_smi": None, "gpu": None, "driver": None}
     try:
         import xgboost as xgb  # noqa: F401  (нужен только факт наличия)
     except Exception as exc:
@@ -246,26 +345,27 @@ def gpu_report() -> dict:
         return info
     # Тонкость: xgboost не падает, если GPU не найден, а молча продолжает на CPU. Поэтому
     # после пробного обучения смотрим на устройство, которое реально записано в конфиг бустера.
-    try:
-        import contextlib
-        import io
-        import re
-
-        rng = np.random.default_rng(0)
-        x = rng.random((64, 3), dtype=np.float32)
-        y = (x[:, 0] > 0.5).astype(np.int32)
-        probe = xgb.XGBClassifier(n_estimators=1, tree_method="hist", device="cuda", verbosity=0)
-        with contextlib.redirect_stderr(io.StringIO()):
-            probe.fit(x, y)
-        config = probe.get_booster().save_config()
-        used = re.search(r'"device"\s*:\s*"([a-z]+)"', config)
-        info["runtime_ok"] = bool(used) and used.group(1) == "cuda"
-        reason = "" if info["runtime_ok"] else (
-            "xgboost не нашёл CUDA-устройство (проверьте драйвер NVIDIA и CUDA-рантайм: "
-            "py -3 -m pip install nvidia-cuda-runtime-cu12)")
-    except Exception as exc:
-        info["runtime_ok"] = False
-        reason = f"пробный запуск на GPU не удался: {type(exc).__name__}"
+    info["runtime_ok"], reason = _probe_cuda(xgb)
+    if not info["runtime_ok"]:
+        # вторая попытка — с каталогами CUDA-библиотек из pip-пакета nvidia-* в путях поиска DLL
+        added = _add_cuda_dll_dirs()
+        if added:
+            again, why = _probe_cuda(xgb)
+            if again:
+                info["runtime_ok"], reason = True, ""
+                info["cuda_dll_dirs"] = added
+            else:
+                reason = (f"{reason}; после добавления каталогов "
+                          f"{', '.join(added[:2])} — {why}")
+    if not info["runtime_ok"]:
+        hint = ("проверьте драйвер: nvidia-smi должен показать карту; если команды нет — "
+                "поставьте драйвер NVIDIA, если есть — обновите его")
+        reason = f"{reason} ({hint})"
+        warning = _DEVICE_CACHE.get("xgboost_warning")
+        if warning:
+            reason += f". Сообщение xgboost: {warning}"
+    info["cuda_dll_dirs"] = info.get("cuda_dll_dirs") or _cuda_dll_dirs()
+    info.update({k: v for k, v in _nvidia_smi().items() if k not in info or info[k] is None})
     _DEVICE_CACHE["runtime"] = "cuda" if info["runtime_ok"] else "cpu"
     _DEVICE_CACHE["reason"] = reason
     info["reason"] = reason

@@ -408,3 +408,48 @@ class _SingleChipDataset:
     def load(self, chip_id: str) -> Chip:
         assert chip_id == self.chip.chip_id
         return self.chip
+
+
+def test_tune_af_accepts_only_confirmed_rule(monkeypatch, tiny_dataset):
+    """Пороги активного горения принимаются только если выигрыш виден на второй половине чипов."""
+
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    if str(root / "tools") not in sys.path:
+        sys.path.insert(0, str(root / "tools"))
+    import train_loop as tl
+
+    from fires.chips import Dataset
+
+    dataset = Dataset(tiny_dataset)
+    ids = dataset.chip_ids("af") or dataset.chip_ids()
+    assert len(ids) >= 4
+    fit = [chip_id for position, chip_id in enumerate(ids) if position % 2 == 0]
+    check = [chip_id for position, chip_id in enumerate(ids) if position % 2 == 1]
+    tuned_value = tl.AF_TUNE_GRID["k_sigma"][-1]  # 4.0
+
+    def fake_af_f1(_dataset, chip_ids, params, blob_filter=None, verbose=False):
+        # послушный детектор: новое правило лучше на половине поиска, но проверочная половина
+        # выигрыша не подтверждает — принимать нельзя
+        if params.k_sigma == tuned_value:
+            return 0.95 if list(chip_ids) == fit else 0.80
+        return 0.90
+
+    monkeypatch.setattr(tl, "af_f1", fake_af_f1)
+    tuned, info = tl.tune_af(dataset, ids, {"af": {}}, Path("docs/numbers.json"), verbose=False)
+    assert info["accepted"] is False
+    assert tuned.k_sigma != tuned_value          # остались исходные правила
+    assert "не подтвердился" in info["reason"]
+
+    # а если выигрыш подтверждается на обеих половинах — правило принимается
+    def good_af_f1(_dataset, chip_ids, params, blob_filter=None, verbose=False):
+        return 0.95 if params.k_sigma == tuned_value else 0.90
+
+    monkeypatch.setattr(tl, "af_f1", good_af_f1)
+    tuned, info = tl.tune_af(dataset, ids, {"af": {}}, Path("docs/numbers.json"), verbose=False)
+    assert info["accepted"] is True
+    assert tuned.k_sigma == tuned_value
+    assert info["f1_fit_after"] > info["f1_fit_before"]
+    assert tuned.delta_day == 25.0               # остальные пороги не тронуты

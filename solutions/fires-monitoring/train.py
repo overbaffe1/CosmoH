@@ -447,6 +447,42 @@ def _train_severity_model(dataset: Dataset, train_ids: list[str], verbose: bool 
                        feature_names=features, seed=SEED, verbose=verbose)
 
 
+def _eval_model(dataset: Dataset, args, bs_train: list[str], bs_val: list[str]) -> int:
+    """Печатает метрики BS для сохранённой модели — отложенная часть и все чипы.
+
+    Отложенная часть (её модель не видела) — честная оценка; все чипы — оптимистичная, зато
+    сравнимы между кандидатами и с тем, что уходит на платформу.
+    """
+
+    import json as _json
+
+    from fires.severity import SeverityModel
+
+    weights_path = Path(args.out)
+    weights = {}
+    if weights_path.is_file():
+        weights = _json.loads(weights_path.read_text(encoding="utf-8"))
+    bs_params = bs_module.BSParams(**weights.get("bs", {})) if weights.get("bs") else \
+        bs_module.BSParams()
+    model = SeverityModel.load(args.eval_model)
+    if args.device != "auto":
+        model.device = args.device
+    f1_af = (weights.get("train_metrics") or {}).get("af_val_f1")
+    print(f"модель: {args.eval_model}  ({model.describe() if hasattr(model, 'describe') else ''})")
+    print(f"постобработка из модели: {model.describe()}")
+    for title, ids in (("отложенная часть (честно)", bs_val), ("все чипы (оптимистично)", bs_train + bs_val)):
+        metrics = evaluate_bs(dataset, ids, bs_params, severity_model=model)
+        iou, miou = metrics["iou_burn"], metrics["miou_sev"]
+        line = (f"{title:28s} n={len(ids):3d}  IoU_burn={iou:.4f}  mIoU_sev={miou:.4f}  "
+                f"объектив={0.5 * iou + 0.5 * miou:.5f}")
+        if f1_af is not None:
+            line += f"  Score≈{0.35 * float(f1_af) + 0.65 * (0.5 * iou + 0.5 * miou):.5f}"
+        print("    " + line)
+    if f1_af is None:
+        print("    (F1 активного горения в weights.json не найден — Score не считается)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Подбор порогов решения «КосмоФАЙР-2»")
     ap.add_argument("--data-dir", default=None, help="каталог обучающей части (не нужен с --gpu-report)")
@@ -464,6 +500,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="радиус усреднения вероятностей модели по окружению (0 — выключено)")
     ap.add_argument("--majority", type=int, default=0,
                     help="радиус фильтра большинства по карте классов (0 — выключено)")
+    ap.add_argument("--eval-model", default=None,
+                    help="сравнить сохранённую модель степени с текущей: метрики BS на отложенной "
+                         "части и на всех чипах, без обучения")
     ap.add_argument("--gpu-report", action="store_true",
                     help="показать, что известно про GPU, и выйти (диагностика CUDA)")
     args = ap.parse_args(argv)
@@ -474,9 +513,17 @@ def main(argv: list[str] | None = None) -> int:
         info = gpu_report()
         info["устройство"] = resolve_device("auto")
         print(_json.dumps(info, ensure_ascii=False, indent=2))
-        print("\nЕсли runtime_ok = false: py -3 -m pip install --upgrade xgboost "
-              "nvidia-cuda-runtime-cu12\n"
-              "  проверка драйвера: nvidia-smi (должен показать RTX 3060 и версию драйвера)")
+        if not info.get("runtime_ok"):
+            if info.get("nvidia_smi"):
+                print("\nДрайвер на месте (nvidia-smi найден). Что делать по порядку:\n"
+                      "  1) py -3 -m pip install --upgrade xgboost nvidia-cuda-runtime-cu12\n"
+                      "  2) py -3 train.py --gpu-report — если всё ещё false, добавьте каталоги из\n"
+                      "     поля cuda_dll_dirs в PATH (команда set PATH=...;%PATH%) и повторите\n"
+                      "  3) если не помогло — поставьте CUDA Toolkit 12 и обновите драйвер NVIDIA")
+            else:
+                print("\nДрайвер не найден (nvidia-smi нет в PATH) — это и есть причина.\n"
+                      "  Установите драйвер NVIDIA для RTX 3060, перезагрузитесь и повторите\n"
+                      "  py -3 train.py --gpu-report")
         return 0
 
     if not args.data_dir:
@@ -489,6 +536,11 @@ def main(argv: list[str] | None = None) -> int:
     dataset = Dataset(args.data_dir)
     af_train, af_val = _split_ids(dataset, "af", args.val_frac, args.seed)
     bs_train, bs_val = _split_ids(dataset, "bs", args.val_frac, args.seed)
+
+    if args.eval_model:
+        # сравнение кандидатов без обучения: нужно, чтобы выбрать модель для сабмита по числам,
+        # а не по памяти («какая из них дала лучший Score на платформе»)
+        return _eval_model(dataset, args, bs_train, bs_val)
 
     print("=== Модуль детекции активного горения (AF) ===")
     baseline_af = evaluate_af(dataset, af_val, af_module.AFParams())
