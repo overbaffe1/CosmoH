@@ -1,0 +1,449 @@
+{
+  "status": "TEAM_ANALYSIS",
+  "choices": {
+    "BASE": {
+      "rule": "Among evaluated feasible plans only, minimize discounted cost at one common rate",
+      "ranked_feasible_candidates": [
+        {
+          "plan_role": "baseline",
+          "plan_id": "TEAM_LUNAR",
+          "scenario_id": "BASE",
+          "total_cost_mln": 10829.678567071034,
+          "discounted_cost_mln": 10829.678567071034,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.791135659763301,
+          "served_t": 1390.000000000006,
+          "min_commercial_service": 0.9999999999999786,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.36301369862676,
+          "shortage_t": 0.0,
+          "min_total_service": 0.999999999999997,
+          "min_critical_service": 0.9999999999999941,
+          "violations": 0,
+          "architecture": "lunar"
+        },
+        {
+          "plan_role": "baseline",
+          "plan_id": "TEAM_EARTH",
+          "scenario_id": "BASE",
+          "total_cost_mln": 11071.926209100871,
+          "discounted_cost_mln": 11071.926209100871,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.965414538921456,
+          "served_t": 1390.000000000006,
+          "min_commercial_service": 0.9999999999999786,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.36301369862672,
+          "shortage_t": 0.0,
+          "min_total_service": 0.999999999999997,
+          "min_critical_service": 0.9999999999999941,
+          "violations": 0,
+          "architecture": "earth"
+        }
+      ],
+      "economic_candidate": {
+        "plan_role": "baseline",
+        "plan_id": "TEAM_LUNAR",
+        "scenario_id": "BASE",
+        "total_cost_mln": 10829.678567071034,
+        "discounted_cost_mln": 10829.678567071034,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 7.791135659763301,
+        "served_t": 1390.000000000006,
+        "min_commercial_service": 0.9999999999999786,
+        "min_inventory_t": 20.0,
+        "max_inventory_t": 64.36301369862676,
+        "shortage_t": 0.0,
+        "min_total_service": 0.999999999999997,
+        "min_critical_service": 0.9999999999999941,
+        "violations": 0,
+        "architecture": "lunar"
+      },
+      "limitation": "Conditional economic preference, not global optimum or automatic investment approval"
+    },
+    "MANDATORY_STRESS": {
+      "rule": "Among evaluated feasible plans only, minimize discounted cost at one common rate",
+      "ranked_feasible_candidates": [
+        {
+          "plan_role": "redesign",
+          "plan_id": "TEAM_LUNAR_STRESS_DESIGN",
+          "scenario_id": "MANDATORY_STRESS",
+          "total_cost_mln": 13109.997380561581,
+          "discounted_cost_mln": 13109.997380561581,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 8.546282516663329,
+          "served_t": 1534.000000000004,
+          "min_commercial_service": 0.9999999999999721,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.52328767123605,
+          "shortage_t": 0.0,
+          "min_total_service": 0.9999999999999953,
+          "min_critical_service": 0.999999999999992,
+          "violations": 0,
+          "architecture": "lunar"
+        },
+        {
+          "plan_role": "redesign",
+          "plan_id": "TEAM_EARTH_STRESS_DESIGN",
+          "scenario_id": "MANDATORY_STRESS",
+          "total_cost_mln": 13178.69714643103,
+          "discounted_cost_mln": 13178.69714643103,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 8.59106724017666,
+          "served_t": 1534.000000000004,
+          "min_commercial_service": 0.9999999999999721,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.52328767123723,
+          "shortage_t": 0.0,
+          "min_total_service": 0.9999999999999953,
+          "min_critical_service": 0.999999999999992,
+          "violations": 0,
+          "architecture": "earth"
+        }
+      ],
+      "economic_candidate": {
+        "plan_role": "redesign",
+        "plan_id": "TEAM_LUNAR_STRESS_DESIGN",
+        "scenario_id": "MANDATORY_STRESS",
+        "total_cost_mln": 13109.997380561581,
+        "discounted_cost_mln": 13109.997380561581,
+        "discount_rate": 0,
+        "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+        "cost_per_served_t_mln": 8.546282516663329,
+        "served_t": 1534.000000000004,
+        "min_commercial_service": 0.9999999999999721,
+        "min_inventory_t": 20.0,
+        "max_inventory_t": 64.52328767123605,
+        "shortage_t": 0.0,
+        "min_total_service": 0.9999999999999953,
+        "min_critical_service": 0.999999999999992,
+        "violations": 0,
+        "architecture": "lunar"
+      },
+      "limitation": "Conditional economic preference, not global optimum or automatic investment approval"
+    }
+  },
+  "fixed_plans_feasible_in_both": [],
+  "warning": "Switching between scenario-specific plans is not an implementable adaptive policy; respect dated commitments",
+  "rate_crossover": {
+    "status": "TEAM_ASSUMPTION",
+    "unit": "real annual share",
+    "search_interval": [
+      0.0,
+      0.1
+    ],
+    "difference": "PV Lunar minus PV Earth, mln constant-2035 units",
+    "convention": "End-year cashflows to start of first year; preparation already included in first year",
+    "basis": "Research interval; fixed cashflows and unchanged physical feasibility, no market forecast",
+    "samples": [
+      {
+        "rate": 0.0,
+        "earth_pv_mln": 11071.926209100871,
+        "lunar_pv_mln": 10829.678567071034,
+        "lunar_minus_earth_mln": -242.24764202983715
+      },
+      {
+        "rate": 0.05,
+        "earth_pv_mln": 9109.058815526269,
+        "lunar_pv_mln": 9024.486447797495,
+        "lunar_minus_earth_mln": -84.57236772877332
+      },
+      {
+        "rate": 0.1,
+        "earth_pv_mln": 7612.21050765212,
+        "lunar_pv_mln": 7630.90322995889,
+        "lunar_minus_earth_mln": 18.69272230676961
+      }
+    ],
+    "bracket": [
+      0.08921654169480464,
+      0.0892165416948956
+    ],
+    "status_detail": "bracketed"
+  },
+  "stress_explanation": {
+    "earth": {
+      "status": "TEAM_ASSUMPTION",
+      "method": "Sequential decomposition demand → prices → delivery → loss constraint; interaction effects assigned to later steps",
+      "steps": [
+        {
+          "step": "baseline",
+          "delta_cost_mln": 0.0,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11071.926209100871,
+          "discounted_cost_mln": 11071.926209100871,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.965414538921456,
+          "served_t": 1390.000000000006,
+          "min_commercial_service": 0.9999999999999786,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.36301369862672,
+          "shortage_t": 0.0,
+          "min_total_service": 0.999999999999997,
+          "min_critical_service": 0.9999999999999941,
+          "violations": 0
+        },
+        {
+          "step": "demand_multiplier+critical_demand_multiplier",
+          "delta_cost_mln": -98.75978000527175,
+          "delta_shortage_t": 80.7054794520558,
+          "total_cost_mln": 10973.1664290956,
+          "discounted_cost_mln": 10973.1664290956,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.550545518439226,
+          "served_t": 1453.2945205479489,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 44.1573278288596,
+          "shortage_t": 80.7054794520558,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        },
+        {
+          "step": "variable_price_multiplier",
+          "delta_cost_mln": 619.9983431312758,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11593.164772226875,
+          "discounted_cost_mln": 11593.164772226875,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.977161276198715,
+          "served_t": 1453.2945205479489,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 44.1573278288596,
+          "shortage_t": 80.7054794520558,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        },
+        {
+          "step": "actual_delivery_share",
+          "delta_cost_mln": 0.0,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11593.164772226875,
+          "discounted_cost_mln": 11593.164772226875,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.977161276198715,
+          "served_t": 1453.2945205479489,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 44.1573278288596,
+          "shortage_t": 80.7054794520558,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        },
+        {
+          "step": "loss_ceiling",
+          "delta_cost_mln": 0.0,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11593.164772226875,
+          "discounted_cost_mln": 11593.164772226875,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.977161276198715,
+          "served_t": 1453.2945205479489,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 44.1573278288596,
+          "shortage_t": 80.7054794520558,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        }
+      ]
+    },
+    "lunar": {
+      "status": "TEAM_ASSUMPTION",
+      "method": "Sequential decomposition demand → prices → delivery → loss constraint; interaction effects assigned to later steps",
+      "steps": [
+        {
+          "step": "baseline",
+          "delta_cost_mln": 0.0,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 10829.678567071034,
+          "discounted_cost_mln": 10829.678567071034,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.791135659763301,
+          "served_t": 1390.000000000006,
+          "min_commercial_service": 0.9999999999999786,
+          "min_inventory_t": 20.0,
+          "max_inventory_t": 64.36301369862676,
+          "shortage_t": 0.0,
+          "min_total_service": 0.999999999999997,
+          "min_critical_service": 0.9999999999999941,
+          "violations": 0
+        },
+        {
+          "step": "demand_multiplier+critical_demand_multiplier",
+          "delta_cost_mln": -98.75978000527175,
+          "delta_shortage_t": 80.70547945205526,
+          "total_cost_mln": 10730.918787065762,
+          "discounted_cost_mln": 10730.918787065762,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.383856909485753,
+          "served_t": 1453.2945205479496,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 43.965753424656185,
+          "shortage_t": 80.70547945205526,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        },
+        {
+          "step": "variable_price_multiplier",
+          "delta_cost_mln": 516.2765376296375,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11247.1953246954,
+          "discounted_cost_mln": 11247.1953246954,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 7.739102546436879,
+          "served_t": 1453.2945205479496,
+          "min_commercial_service": 0.6366459627329385,
+          "min_inventory_t": 0,
+          "max_inventory_t": 43.965753424656185,
+          "shortage_t": 80.70547945205526,
+          "min_total_service": 0.8695652173913111,
+          "min_critical_service": 0.999999999999992,
+          "violations": 4
+        },
+        {
+          "step": "actual_delivery_share",
+          "delta_cost_mln": -11.068030643988095,
+          "delta_shortage_t": 82.99199999999998,
+          "total_cost_mln": 11236.127294051412,
+          "discounted_cost_mln": 11236.127294051412,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 8.199742119395912,
+          "served_t": 1370.3025205479505,
+          "min_commercial_service": 0.4647008500730778,
+          "min_inventory_t": 0,
+          "max_inventory_t": 43.965753424656185,
+          "shortage_t": 163.69747945205523,
+          "min_total_service": 0.8159909172126254,
+          "min_critical_service": 0.999999999999992,
+          "violations": 5
+        },
+        {
+          "step": "loss_ceiling",
+          "delta_cost_mln": 0.0,
+          "delta_shortage_t": 0.0,
+          "total_cost_mln": 11236.127294051412,
+          "discounted_cost_mln": 11236.127294051412,
+          "discount_rate": 0,
+          "discount_convention": "End-year cashflows to start of first year; preparation recognized in year one (PDF p.7)",
+          "cost_per_served_t_mln": 8.199742119395912,
+          "served_t": 1370.3025205479505,
+          "min_commercial_service": 0.4647008500730778,
+          "min_inventory_t": 0,
+          "max_inventory_t": 43.965753424656185,
+          "shortage_t": 163.69747945205523,
+          "min_total_service": 0.8159909172126254,
+          "min_critical_service": 0.999999999999992,
+          "violations": 5
+        }
+      ]
+    }
+  },
+  "stakeholders": {
+    "earth": [
+      {
+        "party": "Operator",
+        "metric": "min_inventory_t",
+        "before": 0,
+        "after": 20.0,
+        "unit": "t",
+        "responsibility": "Maintain storage and annual reserve"
+      },
+      {
+        "party": "Critical consumers",
+        "metric": "served_critical",
+        "before": 1044.500000000001,
+        "after": 1044.500000000001,
+        "unit": "t",
+        "responsibility": "Critical service target unchanged"
+      },
+      {
+        "party": "Commercial consumers",
+        "metric": "served_commercial",
+        "before": 408.79452054794797,
+        "after": 489.5000000000032,
+        "unit": "t",
+        "responsibility": "Bear residual shortage under critical-first allocation"
+      },
+      {
+        "party": "Fuel/launch suppliers",
+        "metric": "procurement_and_reservation",
+        "before": 10904.393357636543,
+        "after": 12391.02392443816,
+        "unit": "mln_units",
+        "responsibility": "Deliver under dates and contracted capacity; no invented refunds"
+      },
+      {
+        "party": "Investor",
+        "metric": "discounted_cost",
+        "before": 11593.164772226875,
+        "after": 13178.69714643103,
+        "unit": "mln_units",
+        "responsibility": "Finance procurement, preparation, CAPEX and operating costs"
+      }
+    ],
+    "lunar": [
+      {
+        "party": "Operator",
+        "metric": "min_inventory_t",
+        "before": 0,
+        "after": 20.0,
+        "unit": "t",
+        "responsibility": "Maintain storage and annual reserve"
+      },
+      {
+        "party": "Critical consumers",
+        "metric": "served_critical",
+        "before": 1044.500000000001,
+        "after": 1044.500000000001,
+        "unit": "t",
+        "responsibility": "Critical service target unchanged"
+      },
+      {
+        "party": "Commercial consumers",
+        "metric": "served_commercial",
+        "before": 325.8025205479496,
+        "after": 489.5000000000032,
+        "unit": "t",
+        "responsibility": "Bear residual shortage under critical-first allocation"
+      },
+      {
+        "party": "Fuel/launch suppliers",
+        "metric": "procurement_and_reservation",
+        "before": 9105.55699942014,
+        "after": 10866.247357692002,
+        "unit": "mln_units",
+        "responsibility": "Deliver under dates and contracted capacity; no invented refunds"
+      },
+      {
+        "party": "Investor",
+        "metric": "discounted_cost",
+        "before": 11236.127294051412,
+        "after": 13109.997380561581,
+        "unit": "mln_units",
+        "responsibility": "Finance procurement, preparation, CAPEX and operating costs"
+      }
+    ]
+  }
+}

@@ -8566,5 +8566,41 @@
       }
     ],
     "warning": "Scores cannot override feasibility; supplier utility is only a proxy and requires elicitation"
+  },
+  "discount_rate_crossover": {
+    "status": "TEAM_ASSUMPTION",
+    "unit": "real annual share",
+    "search_interval": [
+      0.0,
+      0.1
+    ],
+    "difference": "PV Lunar minus PV Earth, mln constant-2035 units",
+    "convention": "End-year cashflows to start of first year; preparation already included in first year",
+    "basis": "Research interval; fixed cashflows and unchanged physical feasibility, no market forecast",
+    "samples": [
+      {
+        "rate": 0.0,
+        "earth_pv_mln": 11071.926209100871,
+        "lunar_pv_mln": 10829.678567071034,
+        "lunar_minus_earth_mln": -242.24764202983715
+      },
+      {
+        "rate": 0.05,
+        "earth_pv_mln": 9109.058815526269,
+        "lunar_pv_mln": 9024.486447797495,
+        "lunar_minus_earth_mln": -84.57236772877332
+      },
+      {
+        "rate": 0.1,
+        "earth_pv_mln": 7612.21050765212,
+        "lunar_pv_mln": 7630.90322995889,
+        "lunar_minus_earth_mln": 18.69272230676961
+      }
+    ],
+    "bracket": [
+      0.08921654169480464,
+      0.0892165416948956
+    ],
+    "status_detail": "bracketed"
   }
 }

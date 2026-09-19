@@ -6,6 +6,7 @@ from .engine import evaluate
 from .planning import make_plan
 from .analysis import sensitivity, risk_analysis, monte_carlo, mcda, extension_demo, compare_decisions, parameter_sensitivity, stress_attribution, price_crossover
 from .project import calculate_project
+from .decision import discount_rate_crossover, decision_brief
 
 
 def suite(output, count=100):
@@ -62,6 +63,8 @@ def suite(output, count=100):
     report = {'case_version': case['version'], 'status': 'TEAM_ANALYSIS', 'strategies': summaries, 'mcda': mcda(alternatives),
               'price_crossover': price_crossover(case, make_plan(case, 'lunar'), make_plan(case, 'earth')),
               'planned_stress_mcda': mcda([{'plan_id': v['plan_id']+' + EX_ANTE_STRESS_DESIGN', 'base': v['base'], 'stress': v['planned_stress']} for v in summaries.values()])}
+    report['discount_rate_crossover'] = discount_rate_crossover(summaries['earth']['costs_base'], summaries['lunar']['costs_base'])
+    save_json(output / 'decision_brief.json', decision_brief(report))
     save_json(output / 'summary.json', report)
     export_table(output / 'comparison.csv', [{'strategy': k, 'scenario_design': tag, 'money_unit': 'mln constant-2035 units', 'mass_unit': 't', **v[tag]} for k, v in summaries.items() for tag in ['base','stress','planned_stress']])
     print(json.dumps({k: {s:v[s] for s in ['base','stress','planned_stress']} for k,v in summaries.items()}, ensure_ascii=False, indent=2))

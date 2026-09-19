@@ -12,6 +12,9 @@ const fs = require('fs');
  await page.goto(process.env.APP_URL||'http://127.0.0.1:8000');
  await page.waitForFunction(()=>document.querySelector('#status').textContent.startsWith('Готово'));
  if(!(await page.locator('#violations').textContent()).includes('Все проверки'))throw Error('Initial BASE not feasible');
+ await page.locator('#plainHelp summary').click();
+ if(!(await page.locator('#plainHelp').textContent()).includes('космическую заправку'))throw Error('Plain-language help missing');
+ await page.locator('#plainHelp summary').click();
  await page.locator('#stress').click();
  await page.waitForFunction(()=>document.querySelector('#scenarioBadge').textContent.startsWith('MANDATORY_STRESS'));
  if(!(await page.locator('#violations').textContent()).includes('RESERVE_45D'))throw Error('Stress violations absent');
@@ -72,11 +75,21 @@ const fs = require('fs');
  await page.screenshot({path:path.join(root,'results/ui-desktop.png'),fullPage:true});
  await page.screenshot({path:path.join(root,'results/ui-viewport.png')});
  await page.setViewportSize({width:390,height:844});
+ await page.locator('#plainHelp').evaluate(el=>el.open=true);
  await page.screenshot({path:path.join(root,'results/ui-mobile.png'),fullPage:true});
  const overflowing=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth);
  if(overflowing)throw Error('Mobile horizontal page overflow');
  for(const name of ['REPORT','COMPARISON','PRESENTATION']){
    await page.goto('file://'+path.join(root,'docs',name+'.html'));
+   await page.emulateMedia({media:'print'});
+   if(name==='PRESENTATION'){
+     const issues=await page.evaluate(()=>Array.from(document.querySelectorAll('article')).flatMap((a,i)=>{
+       const bottom=Math.max(...Array.from(a.querySelector('.content').children).map(el=>el.getBoundingClientRect().bottom));
+       const box=a.querySelector('.takeaway').getBoundingClientRect(),footer=a.querySelector('footer').getBoundingClientRect();
+       return bottom>box.top-4||box.bottom>footer.top?[i+1]:[];
+     }));
+     if(issues.length)throw Error('Slide content overlap: '+issues.join(','));
+   }
    await page.pdf({path:path.join(root,'results',name+'.pdf'),preferCSSPageSize:true,printBackground:true});
  }
  await browser.close();if(errors.length)throw Error(errors.join('\n'));

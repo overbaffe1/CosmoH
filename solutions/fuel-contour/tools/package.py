@@ -18,7 +18,7 @@ def package(output=None):
         path=repo/name
         if path.is_file():
             files[path.relative_to(ROOT).as_posix()]=path.read_bytes()
-    for name in ['summary.json','comparison.csv']:
+    for name in ['summary.json','comparison.csv','decision_brief.json']:
         path=ROOT/'results'/name
         if not path.exists():
             raise SystemExit('Run python -m fuel.cli suite before packaging')
