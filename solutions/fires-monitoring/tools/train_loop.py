@@ -38,7 +38,7 @@ sys.path.insert(0, str(ROOT))
 
 from fires import bs as bs_module  # noqa: E402
 from fires import severity as sev  # noqa: E402
-from fires.chips import Dataset  # noqa: E402
+from fires.chips import Dataset, find_data_dir  # noqa: E402
 from fires.metrics import score_from_pairs  # noqa: E402
 from fires.weights import load_weights, save_weights  # noqa: E402
 from train import SEED, SEVERITY_TRAIN_PIXELS, _split_ids, evaluate_af, evaluate_bs  # noqa: E402
@@ -390,10 +390,28 @@ def main(argv: list[str] | None = None) -> int:
     if args.device == "cuda" and device != "cuda":
         print(f"    GPU недоступен: {sev.gpu_report()['reason']}")
 
-    dataset = Dataset(args.data_dir)
+    # каталог набора часто указывают на уровень выше или ниже фактического (архивы
+    # распаковываются во вложенную папку) — ищем чипы рядом, но молча не «догадываемся»
+    resolved = find_data_dir(args.data_dir, prefer="masks")
+    if resolved != Path(args.data_dir):
+        print(f"    в {args.data_dir} чипов нет; использую найденный рядом каталог {resolved}")
+    dataset = Dataset(resolved)
+    all_ids = dataset.chip_ids()
+    if not all_ids:
+        print(f"\nв каталоге {args.data_dir} не нашлось ни одного чипа — путь или раскладка не те.\n"
+              f"    что видит решение: py -3 -m fires.chips --data-dir \"{args.data_dir}\"\n"
+              f"    нужен каталог, внутри которого папки af и bs с файлами чипов и meta.csv "
+              f"(обучающая часть)")
+        return 1
+    print(f"    чипов в каталоге: {len(all_ids)} "
+          f"(af {len(dataset.chip_ids('af'))}, bs {len(dataset.chip_ids('bs'))})")
     bs_train, bs_val = _split_ids(dataset, "bs", args.val_frac, args.seed)
     if args.val_chips:
         bs_val = bs_val[:args.val_chips]
+    if not bs_train:
+        print(f"\nBS-чипов для обучения не нашлось (в каталоге {resolved} их "
+              f"{len(dataset.chip_ids('bs'))}) — проверьте, что это обучающая часть с масками")
+        return 1
     weights = load_weights(args.out)
     bs_params = bs_module.to_params(weights.get("bs", {}))
     print(f"    чипов: обучение {len(bs_train)}, отложено {len(bs_val)}; "
@@ -411,6 +429,10 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.perf_counter()
     val_cache = ValCache(dataset, bs_val, sev.FEATURE_NAMES_EXT)
     print(f"    готово: {len(val_cache)} чипов за {time.perf_counter() - t0:.1f} с")
+    if not val_cache:
+        print(f"\nв каталоге {resolved} нет BS-чипов с маской степени поражения — обучать не на чем.\n"
+              f"    маска нужна, чтобы считать метрику: без неё это тестовая часть, а не обучающая")
+        return 1
 
     # --- точка отсчёта: модель из весов (то, что залито на платформу)
     base_model = None

@@ -170,6 +170,12 @@ def process(
     template_ids = sorted({chip_id for chip_id, _ in template})
     if limit:
         template_ids = template_ids[:limit]
+    if not template_ids:
+        # пустой ответ хуже понятной ошибки: молча записанный файл с одним заголовком
+        # участник загрузит на платформу и получит 0 баллов
+        raise SystemExit(
+            f"в каталоге {data_dir} не нашлось ни чипов, ни строк в sample_submission.csv — "
+            f"проверьте путь. Что видит решение: py -3 -m fires.chips --data-dir \"{data_dir}\"")
 
     n_jobs = jobs if jobs > 0 else min(12, os.cpu_count() or 1)
     results: list[dict] = []
@@ -265,8 +271,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="где считать модель степени поражения (по умолчанию — как обучена)")
     args = ap.parse_args(argv)
 
+    from fires.chips import find_data_dir
+
+    data_dir = find_data_dir(args.data_dir, prefer="submission")
+    if data_dir != Path(args.data_dir):
+        print(f"[warn] в {args.data_dir} чипов нет; использую найденный рядом каталог {data_dir}",
+              file=sys.stderr)
+
     report = process(
-        Path(args.data_dir),
+        data_dir,
         Path(args.output),
         Path(args.weights) if args.weights else None,
         limit=args.limit,
@@ -275,8 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.validate:
-        shapes = {cid: (int(a), int(b)) for cid, (a, b) in report_shapes(Path(args.data_dir)).items()}
-        check = validate_submission(args.output, Path(args.data_dir) / "sample_submission.csv", shapes, strict=False)
+        shapes = {cid: (int(a), int(b)) for cid, (a, b) in report_shapes(data_dir).items()}
+        check = validate_submission(args.output, data_dir / "sample_submission.csv", shapes, strict=False)
         print(json.dumps({"validation": check}, ensure_ascii=False, indent=2))
         return 0 if check["ok"] else 1
     return 0

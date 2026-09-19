@@ -12,7 +12,7 @@ import pytest
 import tifffile
 
 from fires import bs as bs_module
-from fires.chips import Dataset
+from fires.chips import Dataset, find_data_dir
 
 pytest.importorskip("tifffile")
 
@@ -106,3 +106,21 @@ def test_clouds_do_not_produce_burn(tmp_path) -> None:
 
     no_mask = bs_module.classify_chip(chip, bs_module.BSParams(mask_scl=False))
     assert int((no_mask > 0)[cloudy].sum()) >= int((severity > 0)[cloudy].sum())
+
+
+def test_find_data_dir_resolves_nested_dataset(tmp_path) -> None:
+    """Набор, распакованный во вложенную папку, находится по пути на уровень выше."""
+
+    nested = tmp_path / "cosmo1" / "train"
+    _write_bs_case(nested)
+    assert find_data_dir(nested) == nested
+    assert find_data_dir(tmp_path / "cosmo1") == nested
+
+
+def test_find_data_dir_keeps_wrong_path(tmp_path) -> None:
+    """Если чипов нет нигде рядом, путь не подменяется: решение должно сказать об ошибке."""
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert find_data_dir(empty) == empty
+    assert find_data_dir(tmp_path / "nope") == tmp_path / "nope"

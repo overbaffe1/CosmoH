@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 from dataclasses import dataclass, field
@@ -145,6 +146,102 @@ class Chip:
     @property
     def shape(self) -> tuple[int, int]:
         return (self.height, self.width)
+
+
+#: Имена папок, по которым узнаётся каталог набора чипов.
+_DATA_MARKERS = ("af", "bs")
+
+
+def _has_chips(path: Path) -> bool:
+    """Есть ли в каталоге сами чипы (папки подзадач или файлы чипов).
+
+    Одной ``meta.csv`` мало: таблица состава лежит и в корне набора, где чипов ещё нет
+    (архив организаторов разворачивается во вложенную папку ``train/train``).
+    """
+
+    if not path.is_dir():
+        return False
+    if any((path / name).is_dir() for name in _DATA_MARKERS):
+        return True
+    try:
+        return any(child.is_file() and gapless(child) for child in path.iterdir())
+    except OSError:
+        return False
+
+
+def _looks_like_dataset(path: Path) -> bool:
+    """Слабый признак: в каталоге есть таблицы набора, но самих чипов может и не быть."""
+
+    return path.is_dir() and ((path / "meta.csv").exists()
+                              or (path / "sample_submission.csv").exists())
+
+
+def _has_masks(path: Path) -> bool:
+    """Есть ли в каталоге маски (признак обучающей части: по ним считается метрика)."""
+
+    try:
+        return next(itertools.islice(path.rglob("*mask*"), 1), None) is not None
+    except OSError:
+        return False
+
+
+def _matches(path: Path, prefer: str | None) -> bool:
+    """Подходит ли каталог под предпочтение: маски (обучение) или шаблон ответа (тест)."""
+
+    if prefer is None:
+        return True
+    if prefer == "masks":
+        return _has_masks(path)
+    if prefer == "submission":
+        return (path / "sample_submission.csv").exists()
+    raise ValueError(f"неизвестное предпочтение каталога: {prefer}")
+
+
+def find_data_dir(root: str | Path, max_depth: int = 2, prefer: str | None = None) -> Path:
+    """Ищет каталог с чипами рядом с указанным путём.
+
+    Участники и организаторы кладут набор по-разному: ``cosmo1/train``, ``cosmo1/train/train``
+    (архив разворачивается во вложенную папку), ``cosmo1`` целиком. Если в указанном каталоге
+    чипов нет, функция смотрит на подпапки до ``max_depth`` уровней вглубь и возвращает первую,
+    где чипы нашлись. ``prefer`` уточняет выбор, когда подходящих каталогов несколько:
+    ``"masks"`` — обучающая часть (для обучения нужны маски), ``"submission"`` — тестовая (по
+    ``sample_submission.csv`` собирается шаблон ответа). Если ничего не нашлось, возвращается
+    исходный путь: решение обязано сказать об ошибке раскладки, а не молча работать на пустом
+    наборе.
+    """
+
+    root = Path(root)
+    # каталог, который и так похож на набор (есть таблицы организаторов), не «исправляем»:
+    # Dataset индексирует файлы рекурсивно, поэтому корень набора подходит и когда чипы лежат
+    # в подпапках вида train/ и test/
+    if _matches(root, prefer) and (_has_chips(root) or _looks_like_dataset(root)):
+        return root
+    strong = root if _has_chips(root) else None
+    queue = [(root, 0)]
+    seen: set[Path] = set()
+    weak: Path | None = root if _looks_like_dataset(root) else None
+    while queue:
+        current, depth = queue.pop(0)
+        if depth >= max_depth or current in seen:
+            continue
+        seen.add(current)
+        try:
+            children = sorted(child for child in current.iterdir() if child.is_dir())
+        except OSError:
+            continue
+        for child in children:
+            if child.name.startswith(".") or child.name in {"__pycache__", "node_modules"}:
+                continue
+            if _has_chips(child):
+                if _matches(child, prefer):
+                    return child
+                if strong is None:
+                    strong = child
+            elif weak is None and _looks_like_dataset(child):
+                weak = child
+            queue.append((child, depth + 1))
+    # каталог с чипами лучше каталога с одними таблицами, а тот — лучше исходного пути
+    return strong or weak or root
 
 
 class Dataset:

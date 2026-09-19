@@ -20,7 +20,7 @@ import numpy as np
 
 from fires import af as af_module
 from fires import bs as bs_module
-from fires.chips import Dataset
+from fires.chips import Dataset, find_data_dir
 from fires.metrics import score_from_pairs
 from fires.severity import SeverityModel
 from fires.weights import load_weights
@@ -61,7 +61,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="где считать модель степени поражения (по умолчанию — как обучена)")
     args = ap.parse_args(argv)
 
-    dataset = Dataset(args.data_dir)
+    resolved = find_data_dir(args.data_dir, prefer="masks")
+    if resolved != Path(args.data_dir):
+        print(f"в {args.data_dir} чипов нет; использую найденный рядом каталог {resolved}")
+    dataset = Dataset(resolved)
+    if not dataset.chip_ids():
+        print(f"в каталоге {args.data_dir} не нашлось ни одного чипа — "
+              f"проверьте путь: py -3 -m fires.chips --data-dir \"{args.data_dir}\"")
+        return 1
     weights = load_weights(args.weights)
     af_params = af_module.to_params(weights.get("af", {}))
     bs_params = bs_module.to_params(weights.get("bs", {}))

@@ -47,6 +47,10 @@ python evaluate.py --data-dir /path/to/train --ablation
 #      и итог «до и после»; --device auto берёт GPU (CUDA/xgboost), если он есть
 python tools/train_loop.py --data-dir /path/to/train --device auto --save
 
+# если решение ответит «не нашлось ни одного чипа» — это путь или распаковка, а не данные:
+# проверьте, что внутри каталога лежат папки af и bs (или распакуйте .rar-части на месте)
+python -m fires.chips --data-dir /path/to/train
+
 # 4) сервис: каталог сцен + REST API + веб-карта
 python -m service.catalog --data-dir /path/to/train --out service/catalog.json \
        --max-bs 30 --min-contour-ha 1.0
