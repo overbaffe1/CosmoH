@@ -109,7 +109,7 @@ def render_deck(slides):
         elif kind=='closing':body+='<div class="closing-strip"><span>ВХОДЫ</span><span>РЕШЕНИЯ</span><span>ПРОВЕРКИ</span><span>ЭКСПОРТ</span></div>'
         elif slide.get('rows'):
             body+='<table><thead><tr>'+''.join('<th>'+html.escape(x)+'</th>' for x in slide['headers'])+'</tr></thead><tbody>'+''.join('<tr>'+''.join('<td>'+html.escape(str(x))+'</td>' for x in row)+'</tr>' for row in slide['rows'])+'</tbody></table>'
-        footer_label = 'КОСМОКОНТУР / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны'
+        footer_label = 'ЛЕНИВЫЕ В ОРБИТЕ / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'ЛЕНИВЫЕ В ОРБИТЕ / КОСМОКОНТУР · млн у.е. 2035 / тонны'
         articles.append(f'<article class="theme-{kind}" aria-label="Слайд {i}"><div class="page-index" aria-hidden="true">{i:02}</div><div class="chapter">{html.escape(slide.get("chapter",""))}</div><div class="kicker">{html.escape(slide["kicker"])}</div><h1>{html.escape(slide["title"])}</h1><div class="content">{body}</div><div class="takeaway">{html.escape(slide["takeaway"])}</div><footer><span>{footer_label}</span><span>Страница {i} / {len(slides)}</span></footer></article>')
     picker=''.join(f'<option value="{j}">{j+1:02} · {html.escape(slide["title"])}</option>' for j,slide in enumerate(slides))
     return '<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Космоконтур — 4 минуты</title><style>'+CSS+'</style><body><div class="deck-shell"><div class="deck-stage">'+''.join(articles)+'</div></div><nav class="deck-nav" aria-label="Управление презентацией"><button id="prevSlide" aria-label="Предыдущий слайд">←</button><span id="slideCount" aria-live="polite"></span><button id="nextSlide" aria-label="Следующий слайд">→</button><select id="slidePicker" aria-label="Перейти к слайду">'+picker+'</select><button id="fullscreen">Полный экран</button><a href="/">Калькулятор ↗</a></nav><script>'+JS+'</script></body></html>'
@@ -260,7 +260,7 @@ def render_pptx(slides, destination):
                     for p in cell.text_frame.paragraphs:p.font.name='Arial';p.font.size=Pt(15);p.font.color.rgb=RGBColor.from_string('E2F0E5' if ri==0 else '163F2D')
         line(s,.66,6.38,12.65,6.38,'36534A' if dark else 'C5D6CA',.7)
         text(s,.66,6.51,12,.65,d['takeaway'],14,'9EC5B1' if dark else '275E47')
-        text(s,.66,7.21,11,.22,'КОСМОКОНТУР / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'КОСМОКОНТУР / TEAM_ANALYSIS · млн постоянных у.е. 2035 / тонны',9,'6B8377')
+        text(s,.66,7.21,11,.22,'ЛЕНИВЫЕ В ОРБИТЕ / КРИТЕРИИ ОРГАНИЗАТОРА · максимумы, не полученные баллы' if kind=='rubric' else 'ЛЕНИВЫЕ В ОРБИТЕ / КОСМОКОНТУР · млн у.е. 2035 / тонны',9,'6B8377')
         text(s,11.65,7.21,1,.22,f'{i:02} / {len(slides)}',9,'6B8377')
         s.notes_slide.notes_text_frame.text=''  # The speech is a separate TXT, never projected.
     prs.save(str(destination))

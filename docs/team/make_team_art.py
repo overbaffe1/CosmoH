@@ -1,7 +1,7 @@
 """Сборка мемной картинки команды и аватара из исходного маскота.
 
 Запуск: python docs/team/make_team_art.py
-Требуется Pillow и шрифты DejaVu из комплекта matplotlib.
+Требуется Pillow и системные шрифты DejaVu Sans.
 Кегль подбирается автоматически под ширину, чтобы кириллица не обрезалась.
 """
 
@@ -13,7 +13,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 HERE = Path(__file__).resolve().parent
 RAW = HERE / "mascot_raw.png"
-FONT_DIR = Path("/usr/local/lib/python3.11/dist-packages/matplotlib/mpl-data/fonts/ttf")
+FONT_DIR = Path("/usr/share/fonts/truetype/dejavu")
 FONT_REG = FONT_DIR / "DejaVuSans.ttf"
 FONT_BOLD = FONT_DIR / "DejaVuSans-Bold.ttf"
 
@@ -66,9 +66,9 @@ def build_meme(src: Path = RAW, dst: Path | None = None) -> Path:
     art = art.resize((width, int(art.size[1] * scale)), Image.LANCZOS)
 
     title = "ЛЕНИВЫЕ В ОРБИТЕ"
-    subtitle = "команда КосмоХакатона 2026 · Красноярск × Санкт-Петербург"
+    subtitle = "Топливный космоконтур 2035 · Санкт-Петербург"
     line1 = "Спешить не будем. Но успеем."
-    line2 = "Стоп-код в 19:30 по МСК — мы стартуем в 19:29."
+    line2 = "Проверяем, хватит ли топлива, времени и денег."
 
     probe = ImageDraw.Draw(Image.new("RGB", (10, 10)))
     max_w = int(width * MAX_W)

@@ -21,7 +21,7 @@ CSS = '''@page{size:A4;margin:18mm}*{box-sizing:border-box}body{margin:0;font:13
 
 
 def document(title, pages):
-    return '<!doctype html><html lang="ru"><meta charset="utf-8"><title>'+html.escape(title)+'</title><style>'+CSS+'</style><body>'+''.join(f'<article><div class="kicker">КОСМОКОНТУР / УПРАВЛЕНЧЕСКАЯ ЗАПИСКА / {i+1:02}</div>{page}<footer>TEAM_ANALYSIS · {title} · Страница {i+1} / {len(pages)} · Все числа: python -m fuel.cli suite → python tools/report.py</footer></article>' for i,page in enumerate(pages))+'</body></html>'
+    return '<!doctype html><html lang="ru"><meta charset="utf-8"><title>'+html.escape(title)+'</title><style>'+CSS+'</style><body>'+''.join(f'<article><div class="kicker">ЛЕНИВЫЕ В ОРБИТЕ / КОСМОКОНТУР / {i+1:02}</div>{page}<footer>TEAM_ANALYSIS · {title} · Страница {i+1} / {len(pages)} · Все числа: python -m fuel.cli suite → python tools/report.py</footer></article>' for i,page in enumerate(pages))+'</body></html>'
 
 
 def line_chart(rows, keys):

@@ -229,3 +229,10 @@ Axe отдельно проверяет рассчитанный BASE в дву�
 `calculator-check.cjs` обновляет настоящий снимок `docs/assets/calculator.png` для слайда 3.
 После него пересоберите `tools/defense.py --pptx`, затем PDF через `browser-check.cjs`.
 Перед публикацией скопируйте проверенный `results/PRESENTATION.pdf` в `docs/PRESENTATION.pdf`.
+
+
+## Публикация команды
+
+Команда **#🦥🛰ЛЕНИВЫЕ В ОРБИТЕ**. Безопасные команды, подготовка чистого ZIP,
+проверка SHA256 и передача на GitVerse — [GITVERSE.md](GITVERSE.md).
+Раскрытые токены нужно отзывать; не помещать их в команды, файлы или URL.

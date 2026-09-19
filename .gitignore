@@ -11,12 +11,9 @@ Telegram Desktop.rar
 *.part[0-9][0-9][0-9].rar
 /tmp/
 
-# Тестовая часть организаторов: распаковывается рядом с репозиторием, в git не нужна
-/test_data/
-/data/
-/firesdata/
-fire-*.tar
-
-# Тестовая часть, распакованная рядом с репозиторием, и файлы ответа
-/test/
-/submission*.csv
+# Credentials stay outside the repository.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
