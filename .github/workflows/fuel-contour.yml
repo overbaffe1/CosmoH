@@ -1,0 +1,43 @@
+name: Fuel contour verification
+on:
+  push:
+    paths: ['solutions/fuel-contour/**', '.github/workflows/fuel-contour.yml']
+  pull_request:
+    paths: ['solutions/fuel-contour/**', '.github/workflows/fuel-contour.yml']
+permissions:
+  contents: read
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solutions/fuel-contour
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: bash tools/setup.sh
+      - run: .venv/bin/python tools/verify_vendor.py
+      - run: .venv/bin/python -m pytest -q
+      - run: .venv/bin/python -m fuel.cli suite --output results
+      - run: .venv/bin/python tools/evidence.py
+      - run: .venv/bin/python tools/evidence_publish.py
+      - run: .venv/bin/python tools/report.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fuel-results
+          path: solutions/fuel-contour/results
+  upstream-reference:
+    # Known upstream broken relative link must remain visible, not continue-on-error.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solutions/fuel-contour
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: bash tools/setup.sh
+      - run: .venv/bin/python vendor/test_oil/tools/validate_reference_repo.py

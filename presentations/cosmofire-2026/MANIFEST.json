@@ -1,0 +1,33 @@
+{
+  "format": "cosmofire-defense-artifacts-v1",
+  "date": "2026-09-20",
+  "files": {
+    "README.md": "c27c895e0588d07ea3204650e6291752cc83aee29c1cb722b90656e50de11d8f",
+    "assets/fonts/DejaVuSans-Bold.ttf": "0d977336a6d5fba34eab8e3199eb218327161b5143749f802982c2bc34df0c96",
+    "assets/fonts/DejaVuSans.ttf": "abdc775b21b1bc470d50c97e790d276f2054b7504e56e5bd3e64f48d68582322",
+    "assets/fonts/LICENSE.txt": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9",
+    "assets/train-swir.png": "8b8ca6db06f8e2365efa5b6fc8ce501c1d7b1df9d919fa7e2687a9c102ee9d7d",
+    "assets/viewer-train.png": "15ca09bf3bbc1191888bea79b2327fb6e4ceb33dbedfbf9fe947df0825d3e7c1",
+    "audit-data.json": "6375a06735e6b07c19c76234724ffe327cb79fab9496f83359285cb2b7f7f48a",
+    "audit_archive.py": "f9084d1e1ea953b4a9937af4c723a3a20becc3650a8766b8a6d453c13161882f",
+    "build_deck.py": "c7e4fc77865d6e2f75b9dd05d1437b55c301b01e9dc7fd7b9cb56b1826be14de",
+    "index.html": "a6ad72a590e35d09d98f7c75e48a5345b2281768a5e9338ec0d7c9bbfc8c1ec2",
+    "package-lock.json": "8de38795e7d9275d6d95f211f93fda0f3f3f212d75f04ba557ba88b44f4181ee",
+    "package.json": "6dbd862cbf5d907013a62c4a849cdbdf6aa839192d3dc5bcb4b6552d1e8fcaba",
+    "render_pdf.cjs": "7e00c09319478c72d5a2c47f68b76373a1a5ef16fc2614bbc06a35803c3edb1e",
+    "requirements-build.txt": "09d388e014ea56c80e9ac6786f3db58a838204aa9516714070a42a58198f6d44",
+    "service-check.json": "29398163cc4259282c61568a6c2fd19186b51dd30f4b9112a009e6230fa55411",
+    "slides.json": "90d8d0338067277cca52b7453789db8730d31172c6e81fc83ca90edeeeb6b105",
+    "source-hashes.json": "8a2bb492021eecda9e4ee519248467f85d84a24922251cf62a8ecd4665ee2366",
+    "sources/Критерии_оценки.pdf": "2bf4d3148e2a499c1150c857d6287e06e5ee566c48219faf8385ea6b9e33ccc3",
+    "sources/Постановка_кейса.pdf": "f5c78dd38524bbdfcb2aa4ea39f2dea8ef1b36bc49991a7647ba22274f4fc156",
+    "verification.json": "4581ad0799ed0c9252131926d5825999cfe053143b20bf6ec7ec2db90404181b",
+    "verify_deck.py": "df8425d2a435a434c6a73972bd84a61057bc66f2267141c6f4093a97ed312be0",
+    "ВЫСТУПЛЕНИЕ.md": "37b1634b45f2f89a65b7ec0d5ce5db9d1899a8ed6329e4864fd024333844dbb2",
+    "ВЫСТУПЛЕНИЕ.txt": "4fe59fa57df7efa9b05421797f1e9ac0d6c8666b0763ed218c57734ecae06c43",
+    "КосмоФАЙР-2_защита.pdf": "0a3749e161465291dabaa7f1c88dc819ca7a996df11dccdb1643065612288b05",
+    "КосмоФАЙР-2_защита.pptx": "18020250de8275513d62a1fb2628aae297caf8114e18e8bd73b5eb554a0a3660",
+    "КосмоФАЙР-2_структура.txt": "123e31e32190707969f96e07b2973f315591ba393ebd6acfe6a8ee5bc88aa0e5",
+    "ПРОВЕРКА_УСЛОВИЙ.md": "db23945fb675c4d8a551f2201e5ddf0e509fabb868d9b85453bad6e8c8b27b45"
+  }
+}

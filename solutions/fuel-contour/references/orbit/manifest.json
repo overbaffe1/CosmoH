@@ -1,0 +1,27 @@
+{
+  "repository": "overbaffe1/orbit",
+  "tree_sha": "f7cad8bb1684d8e38343e763f701bd14402fd9a0",
+  "files": [
+    {
+      "file": "Дополнительно.pdf",
+      "blob_sha": "16010647f0e533db8a404158d1a7fdbcf1c5274c",
+      "sha256": "b10c187b14b72b4c07dcebb770df69f046bbf97f223be48553028acaae2a7a66",
+      "pages": 1,
+      "chars": 272
+    },
+    {
+      "file": "Критерии_оценки_—_Топливный_космоконтур_2035_КосмоХакатон_2026.pdf",
+      "blob_sha": "b19abd5c27841302234ebd6ddbed5e4b7fb6024e",
+      "sha256": "7b12ebc5eb2ee2892854d730fd6ed6b3923d350b2e67c864f9cc0e604fa6295f",
+      "pages": 5,
+      "chars": 8229
+    },
+    {
+      "file": "Постановка_кейса_—_Топливный_космоконтур_2035_КосмоХакатон_2026.pdf",
+      "blob_sha": "03ce4c425fd605e4e071fd062c6e2b89640a8632",
+      "sha256": "9bfdbd7082d810616b5ce6de4794dd2fd60944901be9d3e5aa9ed5747f0b3b8a",
+      "pages": 14,
+      "chars": 37514
+    }
+  ]
+}

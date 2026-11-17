@@ -1,0 +1,5 @@
+# Optional authoring dependencies; not required to run the planner or HTML reports.
+python-pptx==1.0.2
+Pillow==11.1.0
+lxml==5.3.1
+XlsxWriter==3.2.2

@@ -1,0 +1,309 @@
+{
+  "plan_id": "TEAM_EARTH_STRESS_DESIGN",
+  "scenario_id": "MANDATORY_STRESS",
+  "status": "TEAM_DECISION",
+  "assumptions": {
+    "status": "TEAM_ASSUMPTION",
+    "timing": "365-day-year;month=365/12;upper-lead;ceil",
+    "delivery": "Uniform daily arrivals in decision window, before uniform daily demand",
+    "contracts": "One annual contract/source; reservation and TOP prorated by contract window",
+    "holding": "Exact within-day integral with uniform demand; no stock below zero",
+    "opening_stock": "PDF p.7 permits preparation; existing channel history declared below, costs recognized in first financial year",
+    "preparation_availability": {
+      "A": -730,
+      "B": -365,
+      "E": -365
+    },
+    "preparation_availability_basis": "TEAM_ASSUMPTION: existing channels operational before initial delivery; new plants cannot supply initial stock",
+    "unfulfilled_orders": "CASE_INPUT: PDF p.7, no automatic refund for stress ISRU short delivery; no extra penalties",
+    "overflow": "Reject gross delivery before acceptance, record violation; ordered amount remains payable",
+    "emergency_base": "Conservative: any positive scheduled Emergency order counts as a base-channel year",
+    "zbo_commissioning": "Same day as full payment, not before 2036; construction duration unspecified",
+    "earth_new": "Option fee and exercise paid together; preparation and order lead run concurrently",
+    "lunar": "First delivery at commission + upper lead; pre-commission orders do not bypass this",
+    "discount_rate": {
+      "value": 0,
+      "unit": "real annual share",
+      "basis": "undiscounted default; adjustable 0..1, end-year cash flow discounted to start of first year"
+    },
+    "zero_demand_service": 1,
+    "initial_plan_policy": "20 t opening; next-year stress reserve + 8 t buffer; fixed BASE-tariff source priority D(if selected)/A/C/B/E, not an optimizer",
+    "design": "Ex-ante alternative using known stress; no post-event cancellation of committed orders",
+    "design_scenario": {
+      "scenario_id": "MANDATORY_STRESS",
+      "label_ru": "Обязательный стрессовый сценарий",
+      "status": "CASE_INPUT",
+      "demand_multiplier": {
+        "2035": 1.0,
+        "2036": 1.0,
+        "2037": 1.0,
+        "2038": 1.15,
+        "2039": 1.15,
+        "2040": 1.15
+      },
+      "critical_demand_multiplier": {
+        "2035": 1.0,
+        "2036": 1.0,
+        "2037": 1.0,
+        "2038": 1.15,
+        "2039": 1.15,
+        "2040": 1.15
+      },
+      "variable_price_multiplier": {
+        "Earth-Core": {
+          "2035": 1.0,
+          "2036": 1.0,
+          "2037": 1.0,
+          "2038": 1.25,
+          "2039": 1.25,
+          "2040": 1.0
+        },
+        "Earth-Flex": {
+          "2035": 1.0,
+          "2036": 1.0,
+          "2037": 1.0,
+          "2038": 1.25,
+          "2039": 1.25,
+          "2040": 1.0
+        }
+      },
+      "actual_delivery_share": {
+        "Lunar-ISRU": {
+          "2038": 0.55,
+          "2039": 0.75,
+          "2040": 1.0
+        }
+      },
+      "loss_ceiling": {
+        "enabled": true,
+        "from_year": 2038,
+        "max_losses_divided_by_throughput": 0.02
+      },
+      "notes": [
+        "55% and 75% are actual delivery shares and must not be multiplied by reliability again.",
+        "Reservation tariffs, CAPEX and other prices are not changed by the mandatory +25% price shock.",
+        "Mandatory stress is not automatically combined with high-demand or geopolitical research scenarios."
+      ]
+    }
+  },
+  "decisions": {
+    "supply_orders": [
+      {
+        "source_id": "A",
+        "year": 2035,
+        "ordered_volume_t": 110.22018217026465,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": -365
+      },
+      {
+        "source_id": "A",
+        "year": 2036,
+        "ordered_volume_t": 147.939659475348,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 0
+      },
+      {
+        "source_id": "A",
+        "year": 2037,
+        "ordered_volume_t": 190.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 365
+      },
+      {
+        "source_id": "C",
+        "year": 2037,
+        "ordered_volume_t": 14.474238810936725,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 0
+      },
+      {
+        "source_id": "A",
+        "year": 2038,
+        "ordered_volume_t": 190.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 730
+      },
+      {
+        "source_id": "C",
+        "year": 2038,
+        "ordered_volume_t": 111.03710276745608,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2039,
+        "ordered_volume_t": 190.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1095
+      },
+      {
+        "source_id": "C",
+        "year": 2039,
+        "ordered_volume_t": 130.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 730
+      },
+      {
+        "source_id": "B",
+        "year": 2039,
+        "ordered_volume_t": 62.51483556097827,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1338
+      },
+      {
+        "source_id": "A",
+        "year": 2040,
+        "ordered_volume_t": 190.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1460
+      },
+      {
+        "source_id": "C",
+        "year": 2040,
+        "ordered_volume_t": 130.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1095
+      },
+      {
+        "source_id": "B",
+        "year": 2040,
+        "ordered_volume_t": 110.0,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1703
+      },
+      {
+        "source_id": "E",
+        "year": 2040,
+        "ordered_volume_t": 23.9473684210526,
+        "start_day": 1,
+        "end_day": 365,
+        "order_day": 1783
+      }
+    ],
+    "capacity_reservations": [
+      {
+        "source_id": "A",
+        "year": 2035,
+        "reserved_capacity_t": 110.22018217026465,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2036,
+        "reserved_capacity_t": 147.939659475348,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2037,
+        "reserved_capacity_t": 190.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "C",
+        "year": 2037,
+        "reserved_capacity_t": 14.474238810936725,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2038,
+        "reserved_capacity_t": 190.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "C",
+        "year": 2038,
+        "reserved_capacity_t": 111.03710276745608,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2039,
+        "reserved_capacity_t": 190.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "C",
+        "year": 2039,
+        "reserved_capacity_t": 130.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "B",
+        "year": 2039,
+        "reserved_capacity_t": 62.51483556097827,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "A",
+        "year": 2040,
+        "reserved_capacity_t": 190.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "C",
+        "year": 2040,
+        "reserved_capacity_t": 130.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "B",
+        "year": 2040,
+        "reserved_capacity_t": 110.0,
+        "start_day": 1,
+        "end_day": 365
+      },
+      {
+        "source_id": "E",
+        "year": 2040,
+        "reserved_capacity_t": 23.9473684210526,
+        "start_day": 1,
+        "end_day": 365
+      }
+    ],
+    "investments": [
+      {
+        "investment_id": "EARTH_NEW",
+        "decision_day": 0,
+        "commission_day": 730
+      },
+      {
+        "investment_id": "ZBO",
+        "decision_day": 365,
+        "commission_day": 365
+      }
+    ],
+    "inventory_policy": {
+      "opening_stock_t": 20.0,
+      "opening_source_id": "A",
+      "allocation": "critical_first",
+      "opening_order_day": -366,
+      "opening_delivery_day": -1
+    }
+  }
+}

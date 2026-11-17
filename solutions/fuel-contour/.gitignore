@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+results/
+*.log
+
+# Never publish credentials.
+.env
+.env.*
+!.env.example
+*.pem
+*.key

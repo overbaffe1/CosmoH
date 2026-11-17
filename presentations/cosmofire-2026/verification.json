@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-20",
+  "presentation": {
+    "slides": 12,
+    "pdf_pages": 12,
+    "editable_pptx_text": true,
+    "empty_speaker_notes": true,
+    "bounds_check": "PASS",
+    "browser_page_errors": [],
+    "keyboard_navigation": "PASS",
+    "mobile_viewport_px": 390,
+    "mobile_slide_width_px": 366,
+    "native_Microsoft_PowerPoint": "NOT RUN"
+  },
+  "archived_project": {
+    "pytest_passed": 82,
+    "pytest_warnings": 5,
+    "pytest_seconds": 20.97,
+    "rest_smoke_endpoints_passed": 7,
+    "csv_structural_check": "PASS",
+    "official_template_check": "NOT RUN",
+    "full_inference": "NOT RUN",
+    "platform_score": "USER REPORTED: 0.7455",
+    "published_to_competition": false
+  },
+  "fuel_project": "UNMODIFIED"
+}
