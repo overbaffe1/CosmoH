@@ -1,0 +1,17 @@
+# Текстовые файлы: нормализовать переводы строк
+* text=auto eol=lf
+
+# Бинарные форматы — не нормализовать
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.pptx binary
+*.zip binary
+*.rar binary
+*.ttf binary
+
+# Чужой и сгенерированный код не учитывать в статистике языка
+solutions/fuel-contour/vendor/** linguist-vendored
+presentations/cosmofire-2026/assets/fonts/** linguist-vendored

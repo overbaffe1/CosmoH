@@ -17,3 +17,10 @@ Telegram Desktop.rar
 !.env.example
 *.pem
 *.key
+
+# Черновики данных хакатона и большие архивы — не часть решения
+*.rar
+*.7z
+Мониторинг DATA*
+Новая папка*
+results/
